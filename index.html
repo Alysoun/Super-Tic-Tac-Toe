@@ -216,6 +216,60 @@
         .explode {
             opacity: 1;
         }
+
+        .particle {
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .confetti {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            background-color: #f2d74e;
+            position: absolute;
+            left: 50%;
+            animation: confetti 5s ease-in-out -2s infinite;
+            transform-origin: left top;
+        }
+        .confetti:nth-child(1) {
+            background-color: #f2d74e; left: 10%; animation-delay: 0;
+        }
+        .confetti:nth-child(2) {
+            background-color: #95c3de; left: 20%; animation-delay: -5s;
+        }
+        .confetti:nth-child(3) {
+            background-color: #ff9a91; left: 30%; animation-delay: -3s;
+        }
+        .confetti:nth-child(4) {
+            background-color: #f2d74e; left: 40%; animation-delay: -2.5s;
+        }
+        .confetti:nth-child(5) {
+            background-color: #95c3de; left: 50%; animation-delay: -4s;
+        }
+        .confetti:nth-child(6) {
+            background-color: #ff9a91; left: 60%; animation-delay: -6s;
+        }
+        .confetti:nth-child(7) {
+            background-color: #f2d74e; left: 70%; animation-delay: -1.5s;
+        }
+        .confetti:nth-child(8) {
+            background-color: #95c3de; left: 80%; animation-delay: -2s;
+        }
+        .confetti:nth-child(9) {
+            background-color: #ff9a91; left: 90%; animation-delay: -3.5s;
+        }
+        .confetti:nth-child(10) {
+            background-color: #f2d74e; left: 100%; animation-delay: -2.5s;
+        }
+
+        @keyframes confetti {
+            0% { transform: rotateZ(15deg) rotateY(0deg) translate(0,0); }
+            25% { transform: rotateZ(5deg) rotateY(360deg) translate(-5vw,20vh); }
+            50% { transform: rotateZ(15deg) rotateY(720deg) translate(5vw,60vh); }
+            75% { transform: rotateZ(5deg) rotateY(1080deg) translate(-10vw,80vh); }
+            100% { transform: rotateZ(15deg) rotateY(1440deg) translate(10vw,110vh); }
+        }
     </style>
 </head>
 <body>
@@ -226,6 +280,15 @@
         <div class="sidebar">
             <button id="help-button">How to Play</button>
             <button id="name-input-button">Enter Player Names</button>
+            <div>
+                <label for="ai-toggle">Play against AI:</label>
+                <input type="checkbox" id="ai-toggle">
+            </div>
+            <select id="ai-difficulty" style="display: none;">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+            </select>
             <div class="scoreboard" id="scoreboard">
                 <p>Scoreboard:</p>
                 <p id="player-x-score">Player X: 0</p>
@@ -252,8 +315,10 @@
         </div>
         <button id="save-names-button">Save</button>
     </div>
+    <div id="confetti-container"></div>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
+            // DOM element references
             const gameBoard = document.getElementById("game-board");
             const playerIndicator = document.getElementById("player-indicator");
             const helpButton = document.getElementById("help-button");
@@ -267,38 +332,47 @@
             const playerONameModal = document.getElementById("player-o-name-modal");
             const playerXScoreElement = document.getElementById("player-x-score");
             const playerOScoreElement = document.getElementById("player-o-score");
+
+            // Game state variables
             let playerXScore = 0;
             let playerOScore = 0;
             let playerXName = "Player X";
             let playerOName = "Player O";
 
+            // Initialize game boards
             const bigBoard = Array.from({ length: 3 }, () => Array(3).fill(null));
             const smallBoards = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => Array(3).fill(null))));
             let currentPlayer = "X";
             let nextBoard = null;
 
+            // Event listeners for UI elements
             helpButton.addEventListener("click", () => {
+                // Show help text and overlay
                 helpText.style.display = "block";
                 overlay.style.display = "block";
             });
 
             closeHelpButton.addEventListener("click", () => {
+                // Hide help text and overlay
                 helpText.style.display = "none";
                 overlay.style.display = "none";
             });
 
             overlay.addEventListener("click", () => {
+                // Hide help text and name input text, and overlay
                 helpText.style.display = "none";
                 nameInputText.style.display = "none";
                 overlay.style.display = "none";
             });
 
             nameInputButton.addEventListener("click", () => {
+                // Show name input text and overlay
                 nameInputText.style.display = "block";
                 overlay.style.display = "block";
             });
 
             saveNamesButton.addEventListener("click", () => {
+                // Save player names and update scoreboard
                 playerXName = playerXNameModal.value || "Player X";
                 playerOName = playerONameModal.value || "Player O";
                 playerXScoreElement.textContent = `${playerXName}: ${playerXScore}`;
@@ -308,6 +382,7 @@
             });
 
             function createBoardElement() {
+                // Create and return a small board element
                 const boardElement = document.createElement("div");
                 boardElement.classList.add("small-board");
                 for (let i = 0; i < 3; i++) {
@@ -323,6 +398,7 @@
             }
 
             function initializeGameBoard() {
+                // Create the initial game board structure
                 for (let i = 0; i < 3; i++) {
                     for (let j = 0; j < 3; j++) {
                         const boardElement = createBoardElement();
@@ -334,6 +410,7 @@
             }
 
             function checkWin(board) {
+                // Check if there's a winner on the given board
                 const winningCombinations = [
                     [[0, 0], [0, 1], [0, 2]],
                     [[1, 0], [1, 1], [1, 2]],
@@ -354,19 +431,56 @@
             }
 
             function isBoardFull(board) {
+                // Check if the given board is full
                 return board.flat().every(cell => cell !== null);
             }
 
             function createExplosionEffect(parentElement) {
-                const explosion = document.createElement("div");
-                explosion.classList.add("explosion", "explode");
-                parentElement.appendChild(explosion);
-                setTimeout(() => {
-                    explosion.remove();
-                }, 1500);
+                const numParticles = 30; // Number of particles in the explosion
+                const explosionDuration = 1000; // Duration of the explosion animation in milliseconds
+
+                for (let i = 0; i < numParticles; i++) {
+                    const particle = document.createElement('div');
+                    particle.classList.add('particle');
+                    
+                    // Randomize particle properties
+                    const size = Math.random() * 8 + 4; // Random size between 4px and 12px
+                    const angle = Math.random() * 360; // Random angle for particle direction
+                    const distance = Math.random() * 100 + 50; // Random distance from center
+                    const duration = Math.random() * 0.5 + 0.5; // Random duration between 0.5s and 1s
+                    
+                    // Set particle styles
+                    particle.style.width = `${size}px`;
+                    particle.style.height = `${size}px`;
+                    particle.style.background = `hsl(${Math.random() * 60 + 10}, 100%, 50%)`; // Random color in yellow-orange range
+                    particle.style.borderRadius = '50%';
+                    particle.style.position = 'absolute';
+                    particle.style.top = '50%';
+                    particle.style.left = '50%';
+                    particle.style.transform = 'translate(-50%, -50%)';
+                    particle.style.opacity = '1';
+
+                    // Animate the particle
+                    particle.animate([
+                        { transform: 'translate(-50%, -50%)', opacity: 1 },
+                        { transform: `translate(calc(-50% + ${Math.cos(angle) * distance}px), calc(-50% + ${Math.sin(angle) * distance}px))`, opacity: 0 }
+                    ], {
+                        duration: explosionDuration * duration,
+                        easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
+                        fill: 'forwards'
+                    });
+
+                    parentElement.appendChild(particle);
+
+                    // Remove particle after animation
+                    setTimeout(() => {
+                        particle.remove();
+                    }, explosionDuration);
+                }
             }
 
             function shakeCells(parentElement) {
+                // Add shake animation to cells
                 parentElement.querySelectorAll('.cell').forEach(cell => {
                     cell.classList.add('shake');
                     setTimeout(() => {
@@ -376,6 +490,7 @@
             }
 
             function handleBoardCompletion(bigRow, bigCol, winner) {
+                // Handle the completion of a small board
                 bigBoard[bigRow][bigCol] = winner;
                 const smallBoardElement = document.querySelector(`.small-board[data-big-row='${bigRow}'][data-big-col='${bigCol}']`);
                 shakeCells(smallBoardElement);
@@ -387,6 +502,7 @@
             }
 
             function handleCellClick(event) {
+                // Handle player moves and game logic
                 const cell = event.target;
                 const smallBoardElement = cell.parentElement;
                 const bigRow = parseInt(smallBoardElement.dataset.bigRow);
@@ -394,26 +510,33 @@
                 const row = parseInt(cell.dataset.row);
                 const col = parseInt(cell.dataset.col);
 
+                // Check if the move is valid
                 if (cell.textContent !== "" || (nextBoard && (nextBoard[0] !== bigRow || nextBoard[1] !== bigCol))) {
                     return;
                 }
 
+                // Update the cell and game state
                 cell.textContent = currentPlayer;
                 smallBoards[bigRow][bigCol][row][col] = currentPlayer;
                 cell.classList.add("taken");
 
+                // Check for a win or draw in the small board
                 const smallBoardWinner = checkWin(smallBoards[bigRow][bigCol]);
                 if (smallBoardWinner) {
                     handleBoardCompletion(bigRow, bigCol, smallBoardWinner);
+                    nextBoard = null; // Reset nextBoard when a small board is won
                 } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
                     const xCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "X").length;
                     const oCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "O").length;
                     const winner = xCount > oCount ? "X" : oCount > xCount ? "O" : "T";
                     handleBoardCompletion(bigRow, bigCol, winner);
+                    nextBoard = null; // Reset nextBoard when a small board is full
                 }
 
+                // Check for a win or draw in the big board
                 const bigBoardWinner = checkWin(bigBoard);
                 if (bigBoardWinner) {
+                    // Handle big board win
                     document.querySelectorAll('.small-board').forEach(board => {
                         shakeCells(board);
                     });
@@ -422,6 +545,7 @@
                             createExplosionEffect(board);
                         });
                         setTimeout(() => {
+                            showConfetti();
                             alert(`${bigBoardWinner} wins the game!`);
                             if (bigBoardWinner === "X") {
                                 playerXScore++;
@@ -435,6 +559,7 @@
                     }, 1500);
                     return;
                 } else if (isBoardFull(bigBoard)) {
+                    // Handle big board draw
                     setTimeout(() => {
                         alert(`The game is a draw!`);
                         resetGame();
@@ -442,17 +567,26 @@
                     return;
                 }
 
-                if (bigBoard[bigRow][bigCol] !== null) {
+                // Determine the next board to play
+                if (bigBoard[row][col] !== null) {
                     nextBoard = null;
                 } else {
                     nextBoard = [row, col];
                 }
+
+                // Update UI and switch players
                 highlightActiveBoard();
                 currentPlayer = currentPlayer === "X" ? "O" : "X";
                 playerIndicator.textContent = `Current Player: ${currentPlayer}`;
+
+                // After updating the current player
+                if (isAIGame && currentPlayer === "O") {
+                    setTimeout(makeAIMove, 500);
+                }
             }
 
             function highlightActiveBoard() {
+                // Highlight the active board(s) for the next move
                 document.querySelectorAll(".small-board").forEach(board => {
                     board.classList.remove("active-board");
                 });
@@ -475,6 +609,7 @@
             }
 
             function resetGame() {
+                // Reset the game state and UI
                 gameBoard.innerHTML = "";
                 bigBoard.forEach(row => row.fill(null));
                 smallBoards.forEach(boardRow => boardRow.forEach(board => board.forEach(row => row.fill(null))));
@@ -484,8 +619,153 @@
                 initializeGameBoard();
             }
 
+            // Add click event listener to the game board
             gameBoard.addEventListener("click", handleCellClick);
+
+            // Initialize the game board
             initializeGameBoard();
+
+            function showConfetti() {
+                const confettiContainer = document.getElementById('confetti-container');
+                for (let i = 0; i < 10; i++) {
+                    const confetti = document.createElement('div');
+                    confetti.classList.add('confetti');
+                    confettiContainer.appendChild(confetti);
+                }
+                setTimeout(() => {
+                    confettiContainer.innerHTML = '';
+                }, 5000);
+            }
+
+            // Add these new variables
+            let isAIGame = false;
+            let aiDifficulty = 'easy';
+
+            // Add these new DOM element references
+            const aiToggle = document.getElementById("ai-toggle");
+            const aiDifficultySelect = document.getElementById("ai-difficulty");
+
+            // Add event listeners for AI controls
+            aiToggle.addEventListener("change", () => {
+                isAIGame = aiToggle.checked;
+                aiDifficultySelect.style.display = isAIGame ? "inline-block" : "none";
+                resetGame();
+            });
+
+            aiDifficultySelect.addEventListener("change", () => {
+                aiDifficulty = aiDifficultySelect.value;
+            });
+
+            function makeAIMove() {
+                let move;
+                switch (aiDifficulty) {
+                    case 'easy':
+                        move = makeRandomMove();
+                        break;
+                    case 'medium':
+                        move = Math.random() < 0.5 ? makeRandomMove() : makeBestMove();
+                        break;
+                    case 'hard':
+                        move = makeBestMove();
+                        break;
+                }
+
+                if (move) {
+                    const [bigRow, bigCol, row, col] = move;
+                    const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
+                    cell.click();
+                }
+            }
+
+            function makeRandomMove() {
+                const availableMoves = getAvailableMoves();
+                if (availableMoves.length > 0) {
+                    return availableMoves[Math.floor(Math.random() * availableMoves.length)];
+                }
+                return null;
+            }
+
+            function makeBestMove() {
+                const availableMoves = getAvailableMoves();
+                let bestScore = -Infinity;
+                let bestMove = null;
+
+                for (const move of availableMoves) {
+                    const [bigRow, bigCol, row, col] = move;
+                    smallBoards[bigRow][bigCol][row][col] = "O";
+                    const score = minimax(smallBoards, bigBoard, 0, false);
+                    smallBoards[bigRow][bigCol][row][col] = null;
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMove = move;
+                    }
+                }
+
+                return bestMove;
+            }
+
+            function minimax(smallBoards, bigBoard, depth, isMaximizing) {
+                const winner = checkWin(bigBoard);
+                if (winner === "O") return 10 - depth;
+                if (winner === "X") return depth - 10;
+                if (isBoardFull(bigBoard)) return 0;
+
+                if (isMaximizing) {
+                    let bestScore = -Infinity;
+                    for (const move of getAvailableMoves()) {
+                        const [bigRow, bigCol, row, col] = move;
+                        smallBoards[bigRow][bigCol][row][col] = "O";
+                        updateBigBoard(bigBoard, bigRow, bigCol);
+                        const score = minimax(smallBoards, bigBoard, depth + 1, false);
+                        smallBoards[bigRow][bigCol][row][col] = null;
+                        updateBigBoard(bigBoard, bigRow, bigCol);
+                        bestScore = Math.max(score, bestScore);
+                    }
+                    return bestScore;
+                } else {
+                    let bestScore = Infinity;
+                    for (const move of getAvailableMoves()) {
+                        const [bigRow, bigCol, row, col] = move;
+                        smallBoards[bigRow][bigCol][row][col] = "X";
+                        updateBigBoard(bigBoard, bigRow, bigCol);
+                        const score = minimax(smallBoards, bigBoard, depth + 1, true);
+                        smallBoards[bigRow][bigCol][row][col] = null;
+                        updateBigBoard(bigBoard, bigRow, bigCol);
+                        bestScore = Math.min(score, bestScore);
+                    }
+                    return bestScore;
+                }
+            }
+
+            function getAvailableMoves() {
+                const moves = [];
+                for (let bigRow = 0; bigRow < 3; bigRow++) {
+                    for (let bigCol = 0; bigCol < 3; bigCol++) {
+                        if (bigBoard[bigRow][bigCol] === null && (nextBoard === null || (nextBoard[0] === bigRow && nextBoard[1] === bigCol))) {
+                            for (let row = 0; row < 3; row++) {
+                                for (let col = 0; col < 3; col++) {
+                                    if (smallBoards[bigRow][bigCol][row][col] === null) {
+                                        moves.push([bigRow, bigCol, row, col]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return moves;
+            }
+
+            function updateBigBoard(bigBoard, bigRow, bigCol) {
+                const winner = checkWin(smallBoards[bigRow][bigCol]);
+                if (winner) {
+                    bigBoard[bigRow][bigCol] = winner;
+                } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
+                    bigBoard[bigRow][bigCol] = "T";
+                } else {
+                    bigBoard[bigRow][bigCol] = null;
+                }
+            }
         });
     </script>
 </body>
