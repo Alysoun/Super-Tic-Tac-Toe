@@ -900,11 +900,17 @@
                     document.getElementById("player-first").checked = true;
                 }
                 
-                // Add the new "Impossible" option
-                const impossibleOption = document.createElement("option");
-                impossibleOption.value = "impossible";
-                impossibleOption.textContent = "Impossible";
-                aiDifficultySelect.appendChild(impossibleOption);
+                // Clear existing options
+                aiDifficultySelect.innerHTML = '';
+                
+                // Add all options
+                const difficulties = ['easy', 'medium', 'hard', 'impossible'];
+                difficulties.forEach(difficulty => {
+                    const option = document.createElement("option");
+                    option.value = difficulty;
+                    option.textContent = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+                    aiDifficultySelect.appendChild(option);
+                });
             }
 
             function makeAIMove() {
