@@ -442,7 +442,11 @@
                     return;
                 }
 
-                nextBoard = bigBoard[bigRow][bigCol] !== null ? null : [row, col];
+                if (bigBoard[bigRow][bigCol] !== null) {
+                    nextBoard = null;
+                } else {
+                    nextBoard = [row, col];
+                }
                 highlightActiveBoard();
                 currentPlayer = currentPlayer === "X" ? "O" : "X";
                 playerIndicator.textContent = `Current Player: ${currentPlayer}`;
