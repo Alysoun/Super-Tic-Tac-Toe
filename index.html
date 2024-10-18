@@ -51,13 +51,20 @@
             position: relative;
         }
 
+        .small-board.taken {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #1e1e1e;
+        }
+
         .small-board.taken::before {
             content: attr(data-winner);
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 5em;
+            font-size: 8em;
             color: #ffffff;
             z-index: 1;
         }
@@ -189,7 +196,7 @@
     <div id="help-text">
         <p>The game consists of a large 3x3 tic-tac-toe board, where each square contains its own smaller 3x3 board.</p>
         <p>Players take turns placing their symbol (X or O) in the small boards. The next player must play in the board that corresponds to the position of the last move.</p>
-        <p>If a player wins a small board, they claim the corresponding large board square. The game is won when a player wins three large squares in a row, column, or diagonal.</p>
+        <p>If a player wins a small board, they claim the corresponding large board square. If the next move points to a board that has already been won or tied, the player can choose any available square. The game is won when a player wins three large squares in a row, column, or diagonal.</p>
         <button id="close-help-button">Close</button>
     </div>
     <div id="name-input-text">
@@ -377,7 +384,11 @@
                     return;
                 }
 
-                nextBoard = [row, col];
+                if (bigBoard[bigRow][bigCol] !== null) {
+                    nextBoard = null;
+                } else {
+                    nextBoard = [row, col];
+                }
                 highlightActiveBoard();
                 currentPlayer = currentPlayer === "X" ? "O" : "X";
                 playerIndicator.textContent = `Current Player: ${currentPlayer}`;
@@ -393,6 +404,10 @@
                     if (activeBoard && !activeBoard.classList.contains("taken")) {
                         activeBoard.classList.add("active-board");
                     }
+                } else {
+                    document.querySelectorAll(".small-board:not(.taken)").forEach(board => {
+                        board.classList.add("active-board");
+                    });
                 }
             }
 
