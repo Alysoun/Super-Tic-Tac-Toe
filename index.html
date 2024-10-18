@@ -361,7 +361,7 @@
                 parentElement.appendChild(explosion);
                 setTimeout(() => {
                     explosion.remove();
-                }, 10000);
+                }, 1000);
             }
 
             function shakeCells(parentElement) {
@@ -397,7 +397,7 @@
                         smallBoardElement.classList.add("taken");
                         smallBoardElement.dataset.winner = smallBoardWinner;
                         createExplosionEffect(smallBoardElement);
-                    }, 1500);
+                    }, 500);
                 } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
                     let xCount = 0;
                     let oCount = 0;
@@ -417,7 +417,7 @@
                             smallBoardElement.classList.add("taken");
                             smallBoardElement.dataset.winner = "X";
                             createExplosionEffect(smallBoardElement);
-                        }, 1500);
+                        }, 500);
                     } else if (oCount > xCount) {
                         bigBoard[bigRow][bigCol] = "O";
                         shakeCells(smallBoardElement);
@@ -425,7 +425,7 @@
                             smallBoardElement.classList.add("taken");
                             smallBoardElement.dataset.winner = "O";
                             createExplosionEffect(smallBoardElement);
-                        }, 1500);
+                        }, 500);
                     } else {
                         bigBoard[bigRow][bigCol] = "T"; // Mark as tied if counts are equal
                         smallBoardElement.classList.add("taken");
