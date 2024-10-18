@@ -915,18 +915,21 @@
 
             function makeAIMove() {
                 let move;
+                const timeLimit = 3000; // 3 seconds time limit
+                const startTime = Date.now();
+
                 switch (aiDifficulty) {
                     case 'easy':
                         move = makeRandomMove();
                         break;
                     case 'medium':
-                        move = Math.random() < 0.5 ? makeRandomMove() : makeBestMove(3);
+                        move = Math.random() < 0.5 ? makeRandomMove() : makeBestMove(3, timeLimit, startTime);
                         break;
                     case 'hard':
-                        move = Math.random() < 0.85 ? makeBestMove(5) : makeRandomMove();
+                        move = Math.random() < 0.85 ? makeBestMove(5, timeLimit, startTime) : makeRandomMove();
                         break;
                     case 'impossible':
-                        move = makeBestMove(7); // Increased depth for impossible
+                        move = makeBestMove(7, timeLimit, startTime);
                         break;
                 }
 
@@ -937,15 +940,7 @@
                 }
             }
 
-            function makeRandomMove() {
-                const availableMoves = getAvailableMoves();
-                if (availableMoves.length > 0) {
-                    return availableMoves[Math.floor(Math.random() * availableMoves.length)];
-                }
-                return null;
-            }
-
-            function makeBestMove(depth) {
+            function makeBestMove(maxDepth, timeLimit, startTime) {
                 const availableMoves = getAvailableMoves();
                 let bestScore = -Infinity;
                 let bestMoves = [];
@@ -954,7 +949,7 @@
                     const [bigRow, bigCol, row, col] = move;
                     smallBoards[bigRow][bigCol][row][col] = "O";
                     updateBigBoard(bigBoard, bigRow, bigCol);
-                    const score = minimax(smallBoards, bigBoard, depth, false, -Infinity, Infinity, [row, col]);
+                    const score = minimax(smallBoards, bigBoard, maxDepth, false, -Infinity, Infinity, [row, col], timeLimit, startTime);
                     smallBoards[bigRow][bigCol][row][col] = null;
                     updateBigBoard(bigBoard, bigRow, bigCol);
 
@@ -964,13 +959,22 @@
                     } else if (score === bestScore) {
                         bestMoves.push(move);
                     }
+
+                    if (Date.now() - startTime > timeLimit) {
+                        console.log("Time limit reached in makeBestMove");
+                        break;
+                    }
                 }
 
-                // Randomly select one of the best moves
                 return bestMoves[Math.floor(Math.random() * bestMoves.length)];
             }
 
-            function minimax(smallBoards, bigBoard, depth, isMaximizing, alpha, beta, lastMove) {
+            function minimax(smallBoards, bigBoard, depth, isMaximizing, alpha, beta, lastMove, timeLimit, startTime) {
+                if (Date.now() - startTime > timeLimit) {
+                    console.log("Time limit reached in minimax");
+                    return isMaximizing ? -Infinity : Infinity;
+                }
+
                 const bigBoardWinner = checkWin(bigBoard);
                 if (bigBoardWinner === "O") return 1000 + depth;
                 if (bigBoardWinner === "X") return -1000 - depth;
@@ -983,7 +987,7 @@
                     const [bigRow, bigCol, row, col] = move;
                     smallBoards[bigRow][bigCol][row][col] = isMaximizing ? "O" : "X";
                     updateBigBoard(bigBoard, bigRow, bigCol);
-                    const score = minimax(smallBoards, bigBoard, depth - 1, !isMaximizing, alpha, beta, [row, col]);
+                    const score = minimax(smallBoards, bigBoard, depth - 1, !isMaximizing, alpha, beta, [row, col], timeLimit, startTime);
                     smallBoards[bigRow][bigCol][row][col] = null;
                     updateBigBoard(bigBoard, bigRow, bigCol);
 
@@ -996,6 +1000,11 @@
                     }
 
                     if (beta <= alpha) break;
+
+                    if (Date.now() - startTime > timeLimit) {
+                        console.log("Time limit reached in minimax loop");
+                        break;
+                    }
                 }
 
                 return bestScore;
