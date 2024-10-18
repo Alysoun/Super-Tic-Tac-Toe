@@ -279,53 +279,28 @@
             z-index: 10;
         }
 
-        .confetti {
+        #confetti-container {
             position: fixed;
-            width: 10px;
-            height: 10px;
-            background-color: #f2d74e;
-            position: absolute;
-            left: 50%;
-            animation: confetti 5s ease-in-out -2s infinite;
-            transform-origin: left top;
-        }
-        .confetti:nth-child(1) {
-            background-color: #f2d74e; left: 10%; animation-delay: 0;
-        }
-        .confetti:nth-child(2) {
-            background-color: #95c3de; left: 20%; animation-delay: -5s;
-        }
-        .confetti:nth-child(3) {
-            background-color: #ff9a91; left: 30%; animation-delay: -3s;
-        }
-        .confetti:nth-child(4) {
-            background-color: #f2d74e; left: 40%; animation-delay: -2.5s;
-        }
-        .confetti:nth-child(5) {
-            background-color: #95c3de; left: 50%; animation-delay: -4s;
-        }
-        .confetti:nth-child(6) {
-            background-color: #ff9a91; left: 60%; animation-delay: -6s;
-        }
-        .confetti:nth-child(7) {
-            background-color: #f2d74e; left: 70%; animation-delay: -1.5s;
-        }
-        .confetti:nth-child(8) {
-            background-color: #95c3de; left: 80%; animation-delay: -2s;
-        }
-        .confetti:nth-child(9) {
-            background-color: #ff9a91; left: 90%; animation-delay: -3.5s;
-        }
-        .confetti:nth-child(10) {
-            background-color: #f2d74e; left: 100%; animation-delay: -2.5s;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
         }
 
-        @keyframes confetti {
-            0% { transform: rotateZ(15deg) rotateY(0deg) translate(0,0); }
-            25% { transform: rotateZ(5deg) rotateY(360deg) translate(-5vw,20vh); }
-            50% { transform: rotateZ(15deg) rotateY(720deg) translate(5vw,60vh); }
-            75% { transform: rotateZ(5deg) rotateY(1080deg) translate(-10vw,80vh); }
-            100% { transform: rotateZ(15deg) rotateY(1440deg) translate(10vw,110vh); }
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #f0f;
+            animation: fall 5s linear infinite;
+        }
+
+        @keyframes fall {
+            to {
+                transform: translateY(100vh) rotate(720deg);
+            }
         }
 
         #toggle-sidebar {
@@ -462,6 +437,10 @@
                 <input type="radio" id="ai-first" name="first-player" value="ai">
                 <label for="ai-first">AI Goes First</label>
             </div>
+            <div>
+                <label for="sound-toggle">Sound:</label>
+                <input type="checkbox" id="sound-toggle" checked>
+            </div>
             <button id="start-game-button">Start New Game</button>
             <div class="scoreboard" id="scoreboard">
                 <p>Scoreboard:</p>
@@ -512,6 +491,8 @@
             const firstPlayerRadios = document.getElementsByName("first-player");
             const sidebar = document.getElementById("sidebar");
             const toggleSidebarButton = document.getElementById("toggle-sidebar");
+            const soundToggle = document.getElementById("sound-toggle");
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
             // Game state variables
             let playerXScore = 0;
@@ -681,6 +662,63 @@
                 }, 500);
             }
 
+            function playSound(type) {
+                if (!soundToggle.checked) return;
+
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                switch (type) {
+                    case 'move':
+                        oscillator.type = 'sine';
+                        oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // A4 note
+                        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                        oscillator.start();
+                        oscillator.stop(audioContext.currentTime + 0.1);
+                        break;
+                    case 'win':
+                        oscillator.type = 'square';
+                        oscillator.frequency.setValueAtTime(587.33, audioContext.currentTime); // D5 note
+                        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                        oscillator.start();
+                        oscillator.stop(audioContext.currentTime + 0.3);
+                        setTimeout(() => {
+                            const osc2 = audioContext.createOscillator();
+                            osc2.type = 'square';
+                            osc2.frequency.setValueAtTime(880, audioContext.currentTime); // A5 note
+                            osc2.connect(gainNode);
+                            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                            osc2.start();
+                            osc2.stop(audioContext.currentTime + 0.3);
+                        }, 100);
+                        break;
+                    case 'draw':
+                        oscillator.type = 'triangle';
+                        oscillator.frequency.setValueAtTime(349.23, audioContext.currentTime); // F4 note
+                        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+                        oscillator.start();
+                        oscillator.stop(audioContext.currentTime + 0.2);
+                        setTimeout(() => {
+                            const osc2 = audioContext.createOscillator();
+                            osc2.type = 'triangle';
+                            osc2.frequency.setValueAtTime(293.66, audioContext.currentTime); // D4 note
+                            osc2.connect(gainNode);
+                            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+                            osc2.start();
+                            osc2.stop(audioContext.currentTime + 0.2);
+                        }, 200);
+                        break;
+                }
+            }
+
             function handleCellClick(event) {
                 if (!gameBoard.classList.contains("game-active")) return;
                 // Handle player moves and game logic
@@ -727,6 +765,7 @@
                         });
                         setTimeout(() => {
                             showConfetti();
+                            playSound('win');
                             alert(`${bigBoardWinner} wins the game!`);
                             if (bigBoardWinner === "X") {
                                 playerXScore++;
@@ -742,6 +781,7 @@
                 } else if (isBoardFull(bigBoard)) {
                     // Handle big board draw
                     setTimeout(() => {
+                        playSound('draw');
                         alert(`The game is a draw!`);
                         resetGame();
                     }, 100);
@@ -764,6 +804,7 @@
                 if (isAIGame && currentPlayer === "O") {
                     setTimeout(makeAIMove, 500);
                 }
+                playSound('move');
             }
 
             function highlightActiveBoard() {
@@ -866,10 +907,10 @@
                         move = makeRandomMove();
                         break;
                     case 'medium':
-                        move = Math.random() < 0.5 ? makeRandomMove() : makeBestMove(2); // Depth of 2 for medium
+                        move = Math.random() < 0.5 ? makeRandomMove() : makeBestMove(3); // Increased depth for medium
                         break;
                     case 'hard':
-                        move = makeBestMove(3); // Depth of 3 for hard
+                        move = makeBestMove(5); // Increased depth for hard
                         break;
                 }
 
@@ -896,8 +937,10 @@
                 for (const move of availableMoves) {
                     const [bigRow, bigCol, row, col] = move;
                     smallBoards[bigRow][bigCol][row][col] = "O";
-                    const score = minimax(smallBoards, bigBoard, depth, false, -Infinity, Infinity);
+                    updateBigBoard(bigBoard, bigRow, bigCol);
+                    const score = minimax(smallBoards, bigBoard, depth, false, -Infinity, Infinity, [row, col]);
                     smallBoards[bigRow][bigCol][row][col] = null;
+                    updateBigBoard(bigBoard, bigRow, bigCol);
 
                     if (score > bestScore) {
                         bestScore = score;
@@ -908,58 +951,157 @@
                 return bestMove;
             }
 
-            function minimax(smallBoards, bigBoard, depth, isMaximizing, alpha, beta) {
-                const winner = checkWin(bigBoard);
-                if (winner === "O") return 10 - depth;
-                if (winner === "X") return depth - 10;
-                if (isBoardFull(bigBoard) || depth === 0) return 0;
+            function minimax(smallBoards, bigBoard, depth, isMaximizing, alpha, beta, lastMove) {
+                const bigBoardWinner = checkWin(bigBoard);
+                if (bigBoardWinner === "O") return 1000 + depth;
+                if (bigBoardWinner === "X") return -1000 - depth;
+                if (isBoardFull(bigBoard) || depth === 0) return evaluateBoard(bigBoard, smallBoards, isMaximizing ? "O" : "X", lastMove);
 
-                if (isMaximizing) {
-                    let bestScore = -Infinity;
-                    for (const move of getAvailableMoves()) {
-                        const [bigRow, bigCol, row, col] = move;
-                        smallBoards[bigRow][bigCol][row][col] = "O";
-                        updateBigBoard(bigBoard, bigRow, bigCol);
-                        const score = minimax(smallBoards, bigBoard, depth - 1, false, alpha, beta);
-                        smallBoards[bigRow][bigCol][row][col] = null;
-                        updateBigBoard(bigBoard, bigRow, bigCol);
+                const availableMoves = getAvailableMoves(lastMove);
+                let bestScore = isMaximizing ? -Infinity : Infinity;
+
+                for (const move of availableMoves) {
+                    const [bigRow, bigCol, row, col] = move;
+                    smallBoards[bigRow][bigCol][row][col] = isMaximizing ? "O" : "X";
+                    updateBigBoard(bigBoard, bigRow, bigCol);
+                    const score = minimax(smallBoards, bigBoard, depth - 1, !isMaximizing, alpha, beta, [row, col]);
+                    smallBoards[bigRow][bigCol][row][col] = null;
+                    updateBigBoard(bigBoard, bigRow, bigCol);
+
+                    if (isMaximizing) {
                         bestScore = Math.max(score, bestScore);
                         alpha = Math.max(alpha, bestScore);
-                        if (beta <= alpha) break;
-                    }
-                    return bestScore;
-                } else {
-                    let bestScore = Infinity;
-                    for (const move of getAvailableMoves()) {
-                        const [bigRow, bigCol, row, col] = move;
-                        smallBoards[bigRow][bigCol][row][col] = "X";
-                        updateBigBoard(bigBoard, bigRow, bigCol);
-                        const score = minimax(smallBoards, bigBoard, depth - 1, true, alpha, beta);
-                        smallBoards[bigRow][bigCol][row][col] = null;
-                        updateBigBoard(bigBoard, bigRow, bigCol);
+                    } else {
                         bestScore = Math.min(score, bestScore);
                         beta = Math.min(beta, bestScore);
-                        if (beta <= alpha) break;
                     }
-                    return bestScore;
+
+                    if (beta <= alpha) break;
                 }
+
+                return bestScore;
             }
 
-            function getAvailableMoves() {
+            function evaluateBoard(bigBoard, smallBoards, player, lastMove) {
+                let score = 0;
+                const opponent = player === "O" ? "X" : "O";
+
+                // Evaluate big board
+                score += evaluateLines(bigBoard, player, opponent, 10);
+
+                // Evaluate small boards
+                for (let i = 0; i < 3; i++) {
+                    for (let j = 0; j < 3; j++) {
+                        if (bigBoard[i][j] === null) {
+                            score += evaluateLines(smallBoards[i][j], player, opponent, 1);
+                        }
+                    }
+                }
+
+                // Evaluate strategic positions
+                score += evaluateStrategicPositions(bigBoard, player);
+
+                // Evaluate next move possibilities
+                if (lastMove) {
+                    const [row, col] = lastMove;
+                    if (bigBoard[row][col] === null) {
+                        score += 5; // Bonus for sending opponent to an open board
+                    } else {
+                        score -= 5; // Penalty for sending opponent to a completed board
+                    }
+                }
+
+                return score;
+            }
+
+            function evaluateLines(board, player, opponent, weight) {
+                let score = 0;
+                const lines = [
+                    [[0, 0], [0, 1], [0, 2]],
+                    [[1, 0], [1, 1], [1, 2]],
+                    [[2, 0], [2, 1], [2, 2]],
+                    [[0, 0], [1, 0], [2, 0]],
+                    [[0, 1], [1, 1], [2, 1]],
+                    [[0, 2], [1, 2], [2, 2]],
+                    [[0, 0], [1, 1], [2, 2]],
+                    [[0, 2], [1, 1], [2, 0]]
+                ];
+
+                for (const line of lines) {
+                    const [a, b, c] = line;
+                    const cellValues = [board[a[0]][a[1]], board[b[0]][b[1]], board[c[0]][c[1]]];
+                    const playerCount = cellValues.filter(cell => cell === player).length;
+                    const opponentCount = cellValues.filter(cell => cell === opponent).length;
+                    const emptyCount = cellValues.filter(cell => cell === null).length;
+
+                    if (playerCount === 3) score += 100 * weight;
+                    else if (playerCount === 2 && emptyCount === 1) score += 10 * weight;
+                    else if (playerCount === 1 && emptyCount === 2) score += 1 * weight;
+                    else if (opponentCount === 2 && emptyCount === 1) score -= 10 * weight;
+                }
+
+                return score;
+            }
+
+            function evaluateStrategicPositions(board, player) {
+                let score = 0;
+                const centerValue = 3;
+                const cornerValue = 2;
+                const edgeValue = 1;
+
+                const strategicPositions = [
+                    { pos: [1, 1], value: centerValue },
+                    { pos: [0, 0], value: cornerValue },
+                    { pos: [0, 2], value: cornerValue },
+                    { pos: [2, 0], value: cornerValue },
+                    { pos: [2, 2], value: cornerValue },
+                    { pos: [0, 1], value: edgeValue },
+                    { pos: [1, 0], value: edgeValue },
+                    { pos: [1, 2], value: edgeValue },
+                    { pos: [2, 1], value: edgeValue }
+                ];
+
+                for (const { pos, value } of strategicPositions) {
+                    if (board[pos[0]][pos[1]] === player) {
+                        score += value;
+                    } else if (board[pos[0]][pos[1]] === (player === "O" ? "X" : "O")) {
+                        score -= value;
+                    }
+                }
+
+                return score;
+            }
+
+            function getAvailableMoves(lastMove = null) {
                 const moves = [];
-                for (let bigRow = 0; bigRow < 3; bigRow++) {
-                    for (let bigCol = 0; bigCol < 3; bigCol++) {
-                        if (bigBoard[bigRow][bigCol] === null && (nextBoard === null || (nextBoard[0] === bigRow && nextBoard[1] === bigCol))) {
-                            for (let row = 0; row < 3; row++) {
-                                for (let col = 0; col < 3; col++) {
-                                    if (smallBoards[bigRow][bigCol][row][col] === null) {
-                                        moves.push([bigRow, bigCol, row, col]);
+                const [targetRow, targetCol] = lastMove || [null, null];
+
+                if (targetRow !== null && targetCol !== null && bigBoard[targetRow][targetCol] === null) {
+                    // If the target board is open, only consider moves in that board
+                    for (let row = 0; row < 3; row++) {
+                        for (let col = 0; col < 3; col++) {
+                            if (smallBoards[targetRow][targetCol][row][col] === null) {
+                                moves.push([targetRow, targetCol, row, col]);
+                            }
+                        }
+                    }
+                } else {
+                    // If the target board is completed or not specified, consider all open cells in open boards
+                    for (let bigRow = 0; bigRow < 3; bigRow++) {
+                        for (let bigCol = 0; bigCol < 3; bigCol++) {
+                            if (bigBoard[bigRow][bigCol] === null) {
+                                for (let row = 0; row < 3; row++) {
+                                    for (let col = 0; col < 3; col++) {
+                                        if (smallBoards[bigRow][bigCol][row][col] === null) {
+                                            moves.push([bigRow, bigCol, row, col]);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+
                 return moves;
             }
 
@@ -1002,9 +1144,12 @@
 
             function showConfetti() {
                 const confettiContainer = document.getElementById('confetti-container');
-                for (let i = 0; i < 10; i++) {
+                for (let i = 0; i < 100; i++) {
                     const confetti = document.createElement('div');
                     confetti.classList.add('confetti');
+                    confetti.style.left = `${Math.random() * 100}%`;
+                    confetti.style.animationDelay = `${Math.random() * 5}s`;
+                    confetti.style.backgroundColor = `hsl(${Math.random() * 360}, 100%, 50%)`;
                     confettiContainer.appendChild(confetti);
                 }
                 setTimeout(() => {
