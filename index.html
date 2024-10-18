@@ -423,6 +423,7 @@
                     <option value="easy">Easy</option>
                     <option value="medium">Medium</option>
                     <option value="hard">Hard</option>
+                    <option value="impossible">Impossible</option>
                 </select>
             </div>
             <div>
@@ -898,6 +899,12 @@
                 if (!isAIGame && aiFirstRadio.checked) {
                     document.getElementById("player-first").checked = true;
                 }
+                
+                // Add the new "Impossible" option
+                const impossibleOption = document.createElement("option");
+                impossibleOption.value = "impossible";
+                impossibleOption.textContent = "Impossible";
+                aiDifficultySelect.appendChild(impossibleOption);
             }
 
             function makeAIMove() {
@@ -907,10 +914,13 @@
                         move = makeRandomMove();
                         break;
                     case 'medium':
-                        move = Math.random() < 0.5 ? makeRandomMove() : makeBestMove(3); // Increased depth for medium
+                        move = Math.random() < 0.5 ? makeRandomMove() : makeBestMove(3);
                         break;
                     case 'hard':
-                        move = makeBestMove(5); // Increased depth for hard
+                        move = Math.random() < 0.85 ? makeBestMove(5) : makeRandomMove();
+                        break;
+                    case 'impossible':
+                        move = makeBestMove(7); // Increased depth for impossible
                         break;
                 }
 
@@ -932,7 +942,7 @@
             function makeBestMove(depth) {
                 const availableMoves = getAvailableMoves();
                 let bestScore = -Infinity;
-                let bestMove = null;
+                let bestMoves = [];
 
                 for (const move of availableMoves) {
                     const [bigRow, bigCol, row, col] = move;
@@ -944,11 +954,14 @@
 
                     if (score > bestScore) {
                         bestScore = score;
-                        bestMove = move;
+                        bestMoves = [move];
+                    } else if (score === bestScore) {
+                        bestMoves.push(move);
                     }
                 }
 
-                return bestMove;
+                // Randomly select one of the best moves
+                return bestMoves[Math.floor(Math.random() * bestMoves.length)];
             }
 
             function minimax(smallBoards, bigBoard, depth, isMaximizing, alpha, beta, lastMove) {
