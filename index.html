@@ -461,6 +461,11 @@
                     const activeBoard = document.querySelector(`.small-board[data-big-row='${bigRow}'][data-big-col='${bigCol}']`);
                     if (activeBoard && !activeBoard.classList.contains("taken")) {
                         activeBoard.classList.add("active-board");
+                    } else {
+                        nextBoard = null;
+                        document.querySelectorAll(".small-board:not(.taken)").forEach(board => {
+                            board.classList.add("active-board");
+                        });
                     }
                 } else {
                     document.querySelectorAll(".small-board:not(.taken)").forEach(board => {
