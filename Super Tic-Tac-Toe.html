@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Tic-Tac-Toe</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #ffffff;
+        }
+
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .big-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 10px;
+            width: 600px;
+            height: 600px;
+            margin-bottom: 20px;
+        }
+
+        .small-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 5px;
+            width: 100%;
+            height: 100%;
+            background-color: #1e1e1e;
+            border: 2px solid #ffffff;
+            transition: background-color 0.3s ease;
+        }
+
+        .cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2em;
+            cursor: pointer;
+            background-color: #333333;
+            border: 1px solid #ffffff;
+            transition: background-color 0.3s ease;
+            color: #ffffff;
+        }
+
+        .cell:hover {
+            background-color: #444444;
+        }
+
+        .cell.taken {
+            pointer-events: none;
+            background-color: #555555;
+        }
+
+        .active-board {
+            border: 4px solid #ff5722;
+            background-color: #2e2e2e;
+        }
+
+        .player-indicator {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            padding: 20px;
+            background-color: #1e1e1e;
+            border: 2px solid #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            margin-top: 20px;
+        }
+
+        .sidebar button {
+            margin-bottom: 20px;
+            padding: 10px;
+            font-size: 1em;
+            cursor: pointer;
+            border-radius: 5px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            transition: background-color 0.3s ease;
+        }
+
+        .sidebar button:hover {
+            background-color: #0056b3;
+        }
+
+        .scoreboard {
+            font-size: 1.2em;
+            margin-top: 20px;
+            color: #ffffff;
+        }
+
+        #help-text, #name-input-text {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #1e1e1e;
+            padding: 20px;
+            border: 2px solid #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+            color: #e0e0e0;
+        }
+
+        #help-text button, #name-input-text button {
+            margin-top: 10px;
+            padding: 10px;
+            font-size: 1em;
+            cursor: pointer;
+            border-radius: 5px;
+            border: none;
+            background-color: #dc3545;
+            color: white;
+            transition: background-color 0.3s ease;
+        }
+
+        #help-text button:hover, #name-input-text button:hover {
+            background-color: #c82333;
+        }
+
+        #overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Super Tic-Tac-Toe</h1>
+    <div class="player-indicator" id="player-indicator">Current Player: X</div>
+    <div class="main-container">
+        <div id="game-board" class="big-board"></div>
+        <div class="sidebar">
+            <button id="help-button">How to Play</button>
+            <button id="name-input-button">Enter Player Names</button>
+            <div class="scoreboard" id="scoreboard">
+                <p>Scoreboard:</p>
+                <p id="player-x-score">Player X: 0</p>
+                <p id="player-o-score">Player O: 0</p>
+            </div>
+        </div>
+    </div>
+    <div id="overlay"></div>
+    <div id="help-text">
+        <p>The game consists of a large 3x3 tic-tac-toe board, where each square contains its own smaller 3x3 board.</p>
+        <p>Players take turns placing their symbol (X or O) in the small boards. The next player must play in the board that corresponds to the position of the last move.</p>
+        <p>If a player wins a small board, they claim the corresponding large board square. The game is won when a player wins three large squares in a row, column, or diagonal.</p>
+        <button id="close-help-button">Close</button>
+    </div>
+    <div id="name-input-text">
+        <p>Enter Player Names:</p>
+        <div>
+            <label for="player-x-name-modal">Player X Name:</label>
+            <input type="text" id="player-x-name-modal" placeholder="Player X">
+        </div>
+        <div>
+            <label for="player-o-name-modal">Player O Name:</label>
+            <input type="text" id="player-o-name-modal" placeholder="Player O">
+        </div>
+        <button id="save-names-button">Save</button>
+    </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const gameBoard = document.getElementById("game-board");
+            const playerIndicator = document.getElementById("player-indicator");
+            const helpButton = document.getElementById("help-button");
+            const helpText = document.getElementById("help-text");
+            const closeHelpButton = document.getElementById("close-help-button");
+            const overlay = document.getElementById("overlay");
+            const nameInputButton = document.getElementById("name-input-button");
+            const nameInputText = document.getElementById("name-input-text");
+            const saveNamesButton = document.getElementById("save-names-button");
+            const playerXNameModal = document.getElementById("player-x-name-modal");
+            const playerONameModal = document.getElementById("player-o-name-modal");
+            const playerXScoreElement = document.getElementById("player-x-score");
+            const playerOScoreElement = document.getElementById("player-o-score");
+            let playerXScore = 0;
+            let playerOScore = 0;
+            let playerXName = "Player X";
+            let playerOName = "Player O";
+
+            const bigBoard = Array(3).fill(null).map(() => Array(3).fill(null));
+            const smallBoards = Array(3).fill(null).map(() => Array(3).fill(null).map(() => Array(3).fill(null).map(() => Array(3).fill(null))));
+            let currentPlayer = "X";
+            let nextBoard = null;
+
+            helpButton.addEventListener("click", () => {
+                helpText.style.display = "block";
+                overlay.style.display = "block";
+            });
+
+            closeHelpButton.addEventListener("click", () => {
+                helpText.style.display = "none";
+                overlay.style.display = "none";
+            });
+
+            overlay.addEventListener("click", () => {
+                helpText.style.display = "none";
+                nameInputText.style.display = "none";
+                overlay.style.display = "none";
+            });
+
+            nameInputButton.addEventListener("click", () => {
+                nameInputText.style.display = "block";
+                overlay.style.display = "block";
+            });
+
+            saveNamesButton.addEventListener("click", () => {
+                playerXName = playerXNameModal.value || "Player X";
+                playerOName = playerONameModal.value || "Player O";
+                playerXScoreElement.textContent = `${playerXName}: ${playerXScore}`;
+                playerOScoreElement.textContent = `${playerOName}: ${playerOScore}`;
+                nameInputText.style.display = "none";
+                overlay.style.display = "none";
+            });
+
+            function createBoardElement() {
+                const boardElement = document.createElement("div");
+                boardElement.classList.add("small-board");
+                for (let i = 0; i < 3; i++) {
+                    for (let j = 0; j < 3; j++) {
+                        const cell = document.createElement("div");
+                        cell.classList.add("cell");
+                        cell.dataset.row = i;
+                        cell.dataset.col = j;
+                        boardElement.appendChild(cell);
+                    }
+                }
+                return boardElement;
+            }
+
+            function initializeGameBoard() {
+                for (let i = 0; i < 3; i++) {
+                    for (let j = 0; j < 3; j++) {
+                        const boardElement = createBoardElement();
+                        boardElement.dataset.bigRow = i;
+                        boardElement.dataset.bigCol = j;
+                        gameBoard.appendChild(boardElement);
+                    }
+                }
+            }
+
+            function checkWin(board) {
+                for (let i = 0; i < 3; i++) {
+                    if (board[i][0] && board[i][0] === board[i][1] && board[i][1] === board[i][2]) {
+                        return board[i][0];
+                    }
+                    if (board[0][i] && board[0][i] === board[1][i] && board[1][i] === board[2][i]) {
+                        return board[0][i];
+                    }
+                }
+                if (board[0][0] && board[0][0] === board[1][1] && board[1][1] === board[2][2]) {
+                    return board[0][0];
+                }
+                if (board[0][2] && board[0][2] === board[1][1] && board[1][1] === board[2][0]) {
+                    return board[0][2];
+                }
+                return null;
+            }
+
+            function isBoardFull(board) {
+                return board.every(row => row.every(cell => cell !== null));
+            }
+
+            function handleCellClick(event) {
+                const cell = event.target;
+                const smallBoardElement = cell.parentElement;
+                const bigRow = parseInt(smallBoardElement.dataset.bigRow);
+                const bigCol = parseInt(smallBoardElement.dataset.bigCol);
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+
+                if (cell.textContent !== "" || (nextBoard && (nextBoard[0] !== bigRow || nextBoard[1] !== bigCol))) {
+                    return;
+                }
+
+                cell.textContent = currentPlayer;
+                smallBoards[bigRow][bigCol][row][col] = currentPlayer;
+                cell.classList.add("taken");
+
+                const smallBoardWinner = checkWin(smallBoards[bigRow][bigCol]);
+                if (smallBoardWinner) {
+                    bigBoard[bigRow][bigCol] = smallBoardWinner;
+                    smallBoardElement.classList.add("taken");
+                    smallBoardElement.textContent = smallBoardWinner;
+                } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
+                    let xCount = 0;
+                    let oCount = 0;
+                    for (let i = 0; i < 3; i++) {
+                        for (let j = 0; j < 3; j++) {
+                            if (smallBoards[bigRow][bigCol][i][j] === "X") {
+                                xCount++;
+                            } else if (smallBoards[bigRow][bigCol][i][j] === "O") {
+                                oCount++;
+                            }
+                        }
+                    }
+                    if (xCount > oCount) {
+                        bigBoard[bigRow][bigCol] = "X";
+                        smallBoardElement.classList.add("taken");
+                        smallBoardElement.textContent = "X";
+                    } else if (oCount > xCount) {
+                        bigBoard[bigRow][bigCol] = "O";
+                        smallBoardElement.classList.add("taken");
+                        smallBoardElement.textContent = "O";
+                    } else {
+                        bigBoard[bigRow][bigCol] = "T"; // Mark as tied if counts are equal
+                        smallBoardElement.classList.add("taken");
+                        smallBoardElement.textContent = "T";
+                    }
+                }
+
+                const bigBoardWinner = checkWin(bigBoard);
+                if (bigBoardWinner) {
+                    setTimeout(() => {
+                        alert(`${bigBoardWinner} wins the game!`);
+                        if (bigBoardWinner === "X") {
+                            playerXScore++;
+                            playerXScoreElement.textContent = `${playerXName}: ${playerXScore}`;
+                        } else {
+                            playerOScore++;
+                            playerOScoreElement.textContent = `${playerOName}: ${playerOScore}`;
+                        }
+                        resetGame();
+                    }, 100);
+                    return;
+                } else if (isBoardFull(bigBoard)) {
+                    setTimeout(() => {
+                        alert(`The game is a draw!`);
+                        resetGame();
+                    }, 100);
+                    return;
+                }
+
+                nextBoard = [row, col];
+                highlightActiveBoard();
+                currentPlayer = currentPlayer === "X" ? "O" : "X";
+                playerIndicator.textContent = `Current Player: ${currentPlayer}`;
+            }
+
+            function highlightActiveBoard() {
+                document.querySelectorAll(".small-board").forEach(board => {
+                    board.classList.remove("active-board");
+                });
+                if (nextBoard) {
+                    const [bigRow, bigCol] = nextBoard;
+                    const activeBoard = document.querySelector(`.small-board[data-big-row='${bigRow}'][data-big-col='${bigCol}']`);
+                    if (activeBoard && !activeBoard.classList.contains("taken")) {
+                        activeBoard.classList.add("active-board");
+                    }
+                }
+            }
+
+            function resetGame() {
+                gameBoard.innerHTML = "";
+                bigBoard.forEach((row, i) => row.fill(null));
+                smallBoards.forEach((boardRow, i) => boardRow.forEach((board, j) => board.forEach((row, k) => row.fill(null))));
+                currentPlayer = "X";
+                nextBoard = null;
+                playerIndicator.textContent = `Current Player: ${currentPlayer}`;
+                initializeGameBoard();
+            }
+
+            gameBoard.addEventListener("click", handleCellClick);
+            initializeGameBoard();
+        });
+    </script>
+</body>
+</html>
