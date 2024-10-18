@@ -48,6 +48,18 @@
             background-color: #1e1e1e;
             border: 2px solid #ffffff;
             transition: background-color 0.3s ease;
+            position: relative;
+        }
+
+        .small-board.taken::before {
+            content: attr(data-winner);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 5em;
+            color: #ffffff;
+            z-index: 1;
         }
 
         .cell {
@@ -315,7 +327,7 @@
                 if (smallBoardWinner) {
                     bigBoard[bigRow][bigCol] = smallBoardWinner;
                     smallBoardElement.classList.add("taken");
-                    smallBoardElement.textContent = smallBoardWinner;
+                    smallBoardElement.dataset.winner = smallBoardWinner;
                 } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
                     let xCount = 0;
                     let oCount = 0;
@@ -331,15 +343,15 @@
                     if (xCount > oCount) {
                         bigBoard[bigRow][bigCol] = "X";
                         smallBoardElement.classList.add("taken");
-                        smallBoardElement.textContent = "X";
+                        smallBoardElement.dataset.winner = "X";
                     } else if (oCount > xCount) {
                         bigBoard[bigRow][bigCol] = "O";
                         smallBoardElement.classList.add("taken");
-                        smallBoardElement.textContent = "O";
+                        smallBoardElement.dataset.winner = "O";
                     } else {
                         bigBoard[bigRow][bigCol] = "T"; // Mark as tied if counts are equal
                         smallBoardElement.classList.add("taken");
-                        smallBoardElement.textContent = "T";
+                        smallBoardElement.dataset.winner = "T";
                     }
                 }
 
