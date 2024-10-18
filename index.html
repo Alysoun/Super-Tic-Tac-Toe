@@ -179,6 +179,19 @@
             background-color: rgba(0, 0, 0, 0.7);
             z-index: 5;
         }
+
+        .explosion {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100px;
+            height: 100px;
+            transform: translate(-50%, -50%);
+            background: url('https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif') no-repeat center;
+            background-size: contain;
+            z-index: 2;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -318,6 +331,15 @@
                 return board.every(row => row.every(cell => cell !== null));
             }
 
+            function createExplosionEffect(parentElement) {
+                const explosion = document.createElement("div");
+                explosion.classList.add("explosion");
+                parentElement.appendChild(explosion);
+                setTimeout(() => {
+                    explosion.remove();
+                }, 1000);
+            }
+
             function handleCellClick(event) {
                 const cell = event.target;
                 const smallBoardElement = cell.parentElement;
@@ -339,6 +361,7 @@
                     bigBoard[bigRow][bigCol] = smallBoardWinner;
                     smallBoardElement.classList.add("taken");
                     smallBoardElement.dataset.winner = smallBoardWinner;
+                    createExplosionEffect(smallBoardElement);
                 } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
                     let xCount = 0;
                     let oCount = 0;
@@ -355,10 +378,12 @@
                         bigBoard[bigRow][bigCol] = "X";
                         smallBoardElement.classList.add("taken");
                         smallBoardElement.dataset.winner = "X";
+                        createExplosionEffect(smallBoardElement);
                     } else if (oCount > xCount) {
                         bigBoard[bigRow][bigCol] = "O";
                         smallBoardElement.classList.add("taken");
                         smallBoardElement.dataset.winner = "O";
+                        createExplosionEffect(smallBoardElement);
                     } else {
                         bigBoard[bigRow][bigCol] = "T"; // Mark as tied if counts are equal
                         smallBoardElement.classList.add("taken");
