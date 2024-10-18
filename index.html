@@ -272,8 +272,8 @@
             let playerXName = "Player X";
             let playerOName = "Player O";
 
-            const bigBoard = Array(3).fill(null).map(() => Array(3).fill(null));
-            const smallBoards = Array(3).fill(null).map(() => Array(3).fill(null).map(() => Array(3).fill(null).map(() => Array(3).fill(null))));
+            const bigBoard = Array.from({ length: 3 }, () => Array(3).fill(null));
+            const smallBoards = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => Array(3).fill(null))));
             let currentPlayer = "X";
             let nextBoard = null;
 
@@ -334,25 +334,27 @@
             }
 
             function checkWin(board) {
-                for (let i = 0; i < 3; i++) {
-                    if (board[i][0] && board[i][0] === board[i][1] && board[i][1] === board[i][2]) {
-                        return board[i][0];
+                const winningCombinations = [
+                    [[0, 0], [0, 1], [0, 2]],
+                    [[1, 0], [1, 1], [1, 2]],
+                    [[2, 0], [2, 1], [2, 2]],
+                    [[0, 0], [1, 0], [2, 0]],
+                    [[0, 1], [1, 1], [2, 1]],
+                    [[0, 2], [1, 2], [2, 2]],
+                    [[0, 0], [1, 1], [2, 2]],
+                    [[0, 2], [1, 1], [2, 0]],
+                ];
+                for (const combination of winningCombinations) {
+                    const [a, b, c] = combination;
+                    if (board[a[0]][a[1]] && board[a[0]][a[1]] === board[b[0]][b[1]] && board[a[0]][a[1]] === board[c[0]][c[1]]) {
+                        return board[a[0]][a[1]];
                     }
-                    if (board[0][i] && board[0][i] === board[1][i] && board[1][i] === board[2][i]) {
-                        return board[0][i];
-                    }
-                }
-                if (board[0][0] && board[0][0] === board[1][1] && board[1][1] === board[2][2]) {
-                    return board[0][0];
-                }
-                if (board[0][2] && board[0][2] === board[1][1] && board[1][1] === board[2][0]) {
-                    return board[0][2];
                 }
                 return null;
             }
 
             function isBoardFull(board) {
-                return board.every(row => row.every(cell => cell !== null));
+                return board.flat().every(cell => cell !== null);
             }
 
             function createExplosionEffect(parentElement) {
@@ -361,7 +363,7 @@
                 parentElement.appendChild(explosion);
                 setTimeout(() => {
                     explosion.remove();
-                }, 1000);
+                }, 1500);
             }
 
             function shakeCells(parentElement) {
@@ -371,6 +373,17 @@
                         cell.classList.remove('shake');
                     }, 1500);
                 });
+            }
+
+            function handleBoardCompletion(bigRow, bigCol, winner) {
+                bigBoard[bigRow][bigCol] = winner;
+                const smallBoardElement = document.querySelector(`.small-board[data-big-row='${bigRow}'][data-big-col='${bigCol}']`);
+                shakeCells(smallBoardElement);
+                setTimeout(() => {
+                    smallBoardElement.classList.add("taken");
+                    smallBoardElement.dataset.winner = winner;
+                    createExplosionEffect(smallBoardElement);
+                }, 500);
             }
 
             function handleCellClick(event) {
@@ -391,46 +404,12 @@
 
                 const smallBoardWinner = checkWin(smallBoards[bigRow][bigCol]);
                 if (smallBoardWinner) {
-                    bigBoard[bigRow][bigCol] = smallBoardWinner;
-                    shakeCells(smallBoardElement);
-                    setTimeout(() => {
-                        smallBoardElement.classList.add("taken");
-                        smallBoardElement.dataset.winner = smallBoardWinner;
-                        createExplosionEffect(smallBoardElement);
-                    }, 500);
+                    handleBoardCompletion(bigRow, bigCol, smallBoardWinner);
                 } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
-                    let xCount = 0;
-                    let oCount = 0;
-                    for (let i = 0; i < 3; i++) {
-                        for (let j = 0; j < 3; j++) {
-                            if (smallBoards[bigRow][bigCol][i][j] === "X") {
-                                xCount++;
-                            } else if (smallBoards[bigRow][bigCol][i][j] === "O") {
-                                oCount++;
-                            }
-                        }
-                    }
-                    if (xCount > oCount) {
-                        bigBoard[bigRow][bigCol] = "X";
-                        shakeCells(smallBoardElement);
-                        setTimeout(() => {
-                            smallBoardElement.classList.add("taken");
-                            smallBoardElement.dataset.winner = "X";
-                            createExplosionEffect(smallBoardElement);
-                        }, 500);
-                    } else if (oCount > xCount) {
-                        bigBoard[bigRow][bigCol] = "O";
-                        shakeCells(smallBoardElement);
-                        setTimeout(() => {
-                            smallBoardElement.classList.add("taken");
-                            smallBoardElement.dataset.winner = "O";
-                            createExplosionEffect(smallBoardElement);
-                        }, 500);
-                    } else {
-                        bigBoard[bigRow][bigCol] = "T"; // Mark as tied if counts are equal
-                        smallBoardElement.classList.add("taken");
-                        smallBoardElement.dataset.winner = "T";
-                    }
+                    const xCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "X").length;
+                    const oCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "O").length;
+                    const winner = xCount > oCount ? "X" : oCount > xCount ? "O" : "T";
+                    handleBoardCompletion(bigRow, bigCol, winner);
                 }
 
                 const bigBoardWinner = checkWin(bigBoard);
@@ -463,11 +442,7 @@
                     return;
                 }
 
-                if (bigBoard[bigRow][bigCol] !== null) {
-                    nextBoard = null;
-                } else {
-                    nextBoard = [row, col];
-                }
+                nextBoard = bigBoard[bigRow][bigCol] !== null ? null : [row, col];
                 highlightActiveBoard();
                 currentPlayer = currentPlayer === "X" ? "O" : "X";
                 playerIndicator.textContent = `Current Player: ${currentPlayer}`;
@@ -492,8 +467,8 @@
 
             function resetGame() {
                 gameBoard.innerHTML = "";
-                bigBoard.forEach((row, i) => row.fill(null));
-                smallBoards.forEach((boardRow, i) => boardRow.forEach((board, j) => board.forEach((row, k) => row.fill(null))));
+                bigBoard.forEach(row => row.fill(null));
+                smallBoards.forEach(boardRow => boardRow.forEach(board => board.forEach(row => row.fill(null))));
                 currentPlayer = "X";
                 nextBoard = null;
                 playerIndicator.textContent = `Current Player: ${currentPlayer}`;
