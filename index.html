@@ -1067,6 +1067,11 @@
                 }
             }
 
+            function updateScoreboard() {
+                playerXScoreElement.textContent = `${playerXName}: ${playerXScore}`;
+                playerOScoreElement.textContent = `${playerOName}: ${playerOScore}`;
+            }
+
             function handleBigBoardWin(winner) {
                 gameBoard.classList.remove("game-active");
                 const winnerName = winner === "X" ? playerXName : playerOName;
@@ -1076,14 +1081,32 @@
                     if (winner === "X") {
                         updateStats('wins');
                         playerXScore++;
+                        showConfetti(); // Only show confetti when human player wins against AI
                     } else {
                         updateStats('losses');
                         playerOScore++;
                     }
+                } else {
+                    // For non-AI games, update scores for both players and always show confetti
+                    if (winner === "X") {
+                        playerXScore++;
+                    } else {
+                        playerOScore++;
+                    }
+                    showConfetti();
                 }
                 
                 updateScoreboard();
-                // You might want to add confetti or other win animations here
+                
+                // Open the sidebar
+                sidebar.classList.add("visible");
+                toggleSidebarButton.textContent = "Hide Sidebar";
+                
+                // Scroll to the "Start New Game" button
+                const startGameButton = document.getElementById("start-game-button");
+                if (startGameButton) {
+                    startGameButton.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
             }
 
             function highlightActiveBoard() {
@@ -1507,9 +1530,53 @@
                     updateStats('ties');
                 }
                 updateScoreboard();
+                
+                // Open the sidebar
+                sidebar.classList.add("visible");
+                toggleSidebarButton.textContent = "Hide Sidebar";
+                
+                // Scroll to the "Start New Game" button
+                const startGameButton = document.getElementById("start-game-button");
+                if (startGameButton) {
+                    startGameButton.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
             }
 
             // Make sure to call handleTie() when appropriate in your game logic
+
+            function triggerWin(player) {
+                // Force a win on the big board for the specified player
+                for (let i = 0; i < 3; i++) {
+                    bigBoard[i][0] = player;
+                    smallBoards[i][0] = Array(3).fill(Array(3).fill(player));
+                    
+                    // Update the UI for the small boards
+                    const smallBoardElement = document.querySelector(`.small-board[data-big-row='${i}'][data-big-col='0']`);
+                    smallBoardElement.classList.add("taken");
+                    smallBoardElement.dataset.winner = player;
+                    
+                    // Update the cells within the small board
+                    smallBoardElement.querySelectorAll('.cell').forEach(cell => {
+                        cell.textContent = player;
+                        cell.classList.add("taken");
+                    });
+                }
+
+                // Handle the big board win
+                handleBigBoardWin(player);
+            }
+
+            // Add a button to the sidebar for triggering wins (for debugging)
+            const triggerWinXButton = document.createElement('button');
+            triggerWinXButton.textContent = 'Trigger Win for X';
+            triggerWinXButton.addEventListener('click', () => triggerWin('X'));
+
+            const triggerWinOButton = document.createElement('button');
+            triggerWinOButton.textContent = 'Trigger Win for O';
+            triggerWinOButton.addEventListener('click', () => triggerWin('O'));
+
+            sidebar.appendChild(triggerWinXButton);
+            sidebar.appendChild(triggerWinOButton);
         });
     </script>
 </body>
