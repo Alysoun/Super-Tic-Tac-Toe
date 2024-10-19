@@ -391,6 +391,12 @@
             pointer-events: none;
             opacity: 0.7;
         }
+
+        .ai-thinking {
+            cursor: wait;
+            opacity: 0.7;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -720,8 +726,166 @@
                 }
             }
 
+            function makeAIMove() {
+                console.log("AI move started");
+                gameBoard.classList.add("ai-thinking");
+                
+                const timeLimit = 3000; // 3 seconds time limit
+                const startTime = Date.now();
+                let bestMove = null;
+
+                // Determine the valid board to play in
+                let validBoardRow, validBoardCol;
+                if (nextBoard) {
+                    [validBoardRow, validBoardCol] = nextBoard;
+                } else {
+                    validBoardRow = validBoardCol = null;
+                }
+                console.log(`Valid board: [${validBoardRow}, ${validBoardCol}]`);
+
+                const aiMovePromise = new Promise((resolve) => {
+                    function findMove() {
+                        const elapsedTime = Date.now() - startTime;
+                        console.log(`Elapsed time: ${elapsedTime}ms`);
+                        
+                        if (elapsedTime > timeLimit) {
+                            console.log("Time limit reached, resolving with best move found or random move");
+                            resolve(bestMove || makeRandomMove(validBoardRow, validBoardCol));
+                            return;
+                        }
+
+                        if (!bestMove) {
+                            console.log(`Finding move for difficulty: ${aiDifficulty}`);
+                            switch (aiDifficulty) {
+                                case 'easy':
+                                    bestMove = makeRandomMove(validBoardRow, validBoardCol);
+                                    break;
+                                case 'medium':
+                                    bestMove = Math.random() < 0.5 ? makeRandomMove(validBoardRow, validBoardCol) : makeBestMove(3, timeLimit - elapsedTime, startTime, validBoardRow, validBoardCol);
+                                    break;
+                                case 'hard':
+                                    bestMove = Math.random() < 0.85 ? makeBestMove(5, timeLimit - elapsedTime, startTime, validBoardRow, validBoardCol) : makeRandomMove(validBoardRow, validBoardCol);
+                                    break;
+                                case 'impossible':
+                                    bestMove = makeBestMove(9, timeLimit - elapsedTime, startTime, validBoardRow, validBoardCol);
+                                    break;
+                            }
+                            console.log(`Move found: ${JSON.stringify(bestMove)}`);
+                        }
+
+                        if (bestMove) {
+                            console.log("Best move found, resolving");
+                            resolve(bestMove);
+                        } else {
+                            console.log("No move found yet, checking again in 100ms");
+                            setTimeout(findMove, 100);
+                        }
+                    }
+
+                    findMove();
+                });
+
+                aiMovePromise.then((move) => {
+                    console.log(`AI decided on move: ${JSON.stringify(move)}`);
+                    if (move) {
+                        const [bigRow, bigCol, row, col] = move;
+                        const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
+                        if (cell) {
+                            console.log("Executing AI move");
+                            // Instead of using click(), let's directly update the game state
+                            cell.textContent = currentPlayer;
+                            smallBoards[bigRow][bigCol][row][col] = currentPlayer;
+                            cell.classList.add("taken");
+
+                            // Check for a win or draw in the small board
+                            const smallBoardWinner = checkWin(smallBoards[bigRow][bigCol]);
+                            if (smallBoardWinner) {
+                                handleBoardCompletion(bigRow, bigCol, smallBoardWinner);
+                                nextBoard = null;
+                            } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
+                                const xCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "X").length;
+                                const oCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "O").length;
+                                const winner = xCount > oCount ? "X" : oCount > xCount ? "O" : "T";
+                                handleBoardCompletion(bigRow, bigCol, winner);
+                                nextBoard = null;
+                            }
+
+                            // Determine the next board to play
+                            if (bigBoard[row][col] !== null) {
+                                nextBoard = null;
+                            } else {
+                                nextBoard = [row, col];
+                            }
+
+                            // Update UI and switch players
+                            highlightActiveBoard();
+                            currentPlayer = currentPlayer === "X" ? "O" : "X";
+                            updatePlayerIndicator();
+                            playSound('move');
+
+                            console.log("AI move executed");
+                        } else {
+                            console.error("AI tried to make an invalid move:", move);
+                        }
+                    } else {
+                        console.error("AI failed to find a valid move");
+                    }
+
+                    gameBoard.classList.remove("ai-thinking");
+                    console.log("AI move completed");
+                });
+            }
+
+            function makeRandomMove(validBoardRow, validBoardCol) {
+                const availableMoves = getAvailableMoves(validBoardRow, validBoardCol);
+                if (availableMoves.length > 0) {
+                    return availableMoves[Math.floor(Math.random() * availableMoves.length)];
+                }
+                return null;
+            }
+
+            function getAvailableMoves(validBoardRow, validBoardCol) {
+                const moves = [];
+                if (validBoardRow !== null && validBoardCol !== null) {
+                    // Only consider moves in the specified board
+                    if (bigBoard[validBoardRow] && bigBoard[validBoardRow][validBoardCol] === null) {
+                        if (smallBoards[validBoardRow] && smallBoards[validBoardRow][validBoardCol]) {
+                            for (let row = 0; row < 3; row++) {
+                                for (let col = 0; col < 3; col++) {
+                                    if (smallBoards[validBoardRow][validBoardCol][row][col] === null) {
+                                        moves.push([validBoardRow, validBoardCol, row, col]);
+                                    }
+                                }
+                            }
+                        } else {
+                            console.error(`Invalid smallBoards access at [${validBoardRow}][${validBoardCol}]`);
+                        }
+                    }
+                } else {
+                    // Consider moves in all non-completed boards
+                    for (let bigRow = 0; bigRow < 3; bigRow++) {
+                        for (let bigCol = 0; bigCol < 3; bigCol++) {
+                            if (bigBoard[bigRow] && bigBoard[bigRow][bigCol] === null) {
+                                if (smallBoards[bigRow] && smallBoards[bigRow][bigCol]) {
+                                    for (let row = 0; row < 3; row++) {
+                                        for (let col = 0; col < 3; col++) {
+                                            if (smallBoards[bigRow][bigCol][row][col] === null) {
+                                                moves.push([bigRow, bigCol, row, col]);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    console.error(`Invalid smallBoards access at [${bigRow}][${bigCol}]`);
+                                }
+                            }
+                        }
+                    }
+                }
+                return moves;
+            }
+
             function handleCellClick(event) {
-                if (!gameBoard.classList.contains("game-active")) return;
+                if (!gameBoard.classList.contains("game-active") || (isAIGame && currentPlayer === "O")) return;
                 // Handle player moves and game logic
                 const cell = event.target;
                 const smallBoardElement = cell.parentElement;
@@ -801,9 +965,9 @@
                 currentPlayer = currentPlayer === "X" ? "O" : "X";
                 updatePlayerIndicator();
 
-                // After updating the current player
+                // After updating the current player, check if it's AI's turn
                 if (isAIGame && currentPlayer === "O") {
-                    setTimeout(makeAIMove, 500);
+                    makeAIMove();
                 }
                 playSound('move');
             }
@@ -866,6 +1030,8 @@
                 sidebar.classList.remove("visible");
                 toggleSidebarButton.textContent = "Show Sidebar";
                 
+                isAIGame = aiToggle.checked;
+                
                 if (isAIGame && currentPlayer === "O") {
                     setTimeout(makeAIMove, 500);
                 }
@@ -913,65 +1079,42 @@
                 });
             }
 
-            function makeAIMove() {
-                let move;
-                const timeLimit = 3000; // 3 seconds time limit
-                const startTime = Date.now();
-
-                switch (aiDifficulty) {
-                    case 'easy':
-                        move = makeRandomMove();
-                        break;
-                    case 'medium':
-                        move = Math.random() < 0.5 ? makeRandomMove() : makeBestMove(3, timeLimit, startTime);
-                        break;
-                    case 'hard':
-                        move = Math.random() < 0.85 ? makeBestMove(5, timeLimit, startTime) : makeRandomMove();
-                        break;
-                    case 'impossible':
-                        move = makeBestMove(7, timeLimit, startTime);
-                        break;
+            function makeBestMove(maxDepth, remainingTime, startTime, validBoardRow, validBoardCol) {
+                console.log(`makeBestMove called with depth ${maxDepth}, remaining time ${remainingTime}ms`);
+                const availableMoves = getAvailableMoves(validBoardRow, validBoardCol);
+                if (availableMoves.length === 0) {
+                    console.error("No available moves found");
+                    return null;
                 }
 
-                if (move) {
-                    const [bigRow, bigCol, row, col] = move;
-                    const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
-                    cell.click();
-                }
-            }
-
-            function makeBestMove(maxDepth, timeLimit, startTime) {
-                const availableMoves = getAvailableMoves();
                 let bestScore = -Infinity;
-                let bestMoves = [];
+                let bestMove = null;
 
                 for (const move of availableMoves) {
                     const [bigRow, bigCol, row, col] = move;
                     smallBoards[bigRow][bigCol][row][col] = "O";
                     updateBigBoard(bigBoard, bigRow, bigCol);
-                    const score = minimax(smallBoards, bigBoard, maxDepth, false, -Infinity, Infinity, [row, col], timeLimit, startTime);
+                    const score = minimax(smallBoards, bigBoard, maxDepth, false, -Infinity, Infinity, [row, col], remainingTime, startTime);
                     smallBoards[bigRow][bigCol][row][col] = null;
                     updateBigBoard(bigBoard, bigRow, bigCol);
 
                     if (score > bestScore) {
                         bestScore = score;
-                        bestMoves = [move];
-                    } else if (score === bestScore) {
-                        bestMoves.push(move);
+                        bestMove = move;
                     }
 
-                    if (Date.now() - startTime > timeLimit) {
+                    if (Date.now() - startTime > remainingTime) {
                         console.log("Time limit reached in makeBestMove");
                         break;
                     }
                 }
 
-                return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+                console.log(`makeBestMove returning move: ${JSON.stringify(bestMove)}`);
+                return bestMove;
             }
 
             function minimax(smallBoards, bigBoard, depth, isMaximizing, alpha, beta, lastMove, timeLimit, startTime) {
                 if (Date.now() - startTime > timeLimit) {
-                    console.log("Time limit reached in minimax");
                     return isMaximizing ? -Infinity : Infinity;
                 }
 
@@ -980,7 +1123,7 @@
                 if (bigBoardWinner === "X") return -1000 - depth;
                 if (isBoardFull(bigBoard) || depth === 0) return evaluateBoard(bigBoard, smallBoards, isMaximizing ? "O" : "X", lastMove);
 
-                const availableMoves = getAvailableMoves(lastMove);
+                const availableMoves = getAvailableMoves(lastMove[0], lastMove[1]);
                 let bestScore = isMaximizing ? -Infinity : Infinity;
 
                 for (const move of availableMoves) {
@@ -1000,11 +1143,6 @@
                     }
 
                     if (beta <= alpha) break;
-
-                    if (Date.now() - startTime > timeLimit) {
-                        console.log("Time limit reached in minimax loop");
-                        break;
-                    }
                 }
 
                 return bestScore;
@@ -1065,7 +1203,8 @@
                     if (playerCount === 3) score += 100 * weight;
                     else if (playerCount === 2 && emptyCount === 1) score += 10 * weight;
                     else if (playerCount === 1 && emptyCount === 2) score += 1 * weight;
-                    else if (opponentCount === 2 && emptyCount === 1) score -= 10 * weight;
+                    
+                    if (opponentCount === 2 && emptyCount === 1) score -= 50 * weight; // Blocking opponent's win
                 }
 
                 return score;
@@ -1073,64 +1212,16 @@
 
             function evaluateStrategicPositions(board, player) {
                 let score = 0;
-                const centerValue = 3;
-                const cornerValue = 2;
-                const edgeValue = 1;
+                const corners = [[0, 0], [0, 2], [2, 0], [2, 2]];
+                const center = [1, 1];
 
-                const strategicPositions = [
-                    { pos: [1, 1], value: centerValue },
-                    { pos: [0, 0], value: cornerValue },
-                    { pos: [0, 2], value: cornerValue },
-                    { pos: [2, 0], value: cornerValue },
-                    { pos: [2, 2], value: cornerValue },
-                    { pos: [0, 1], value: edgeValue },
-                    { pos: [1, 0], value: edgeValue },
-                    { pos: [1, 2], value: edgeValue },
-                    { pos: [2, 1], value: edgeValue }
-                ];
-
-                for (const { pos, value } of strategicPositions) {
-                    if (board[pos[0]][pos[1]] === player) {
-                        score += value;
-                    } else if (board[pos[0]][pos[1]] === (player === "O" ? "X" : "O")) {
-                        score -= value;
-                    }
+                for (const [row, col] of corners) {
+                    if (board[row][col] === player) score += 3;
                 }
+
+                if (board[center[0]][center[1]] === player) score += 5;
 
                 return score;
-            }
-
-            function getAvailableMoves(lastMove = null) {
-                const moves = [];
-                const [targetRow, targetCol] = lastMove || [null, null];
-
-                if (targetRow !== null && targetCol !== null && bigBoard[targetRow][targetCol] === null) {
-                    // If the target board is open, only consider moves in that board
-                    for (let row = 0; row < 3; row++) {
-                        for (let col = 0; col < 3; col++) {
-                            if (smallBoards[targetRow][targetCol][row][col] === null) {
-                                moves.push([targetRow, targetCol, row, col]);
-                            }
-                        }
-                    }
-                } else {
-                    // If the target board is completed or not specified, consider all open cells in open boards
-                    for (let bigRow = 0; bigRow < 3; bigRow++) {
-                        for (let bigCol = 0; bigCol < 3; bigCol++) {
-                            if (bigBoard[bigRow][bigCol] === null) {
-                                for (let row = 0; row < 3; row++) {
-                                    for (let col = 0; col < 3; col++) {
-                                        if (smallBoards[bigRow][bigCol][row][col] === null) {
-                                            moves.push([bigRow, bigCol, row, col]);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return moves;
             }
 
             function updateBigBoard(bigBoard, bigRow, bigCol) {
