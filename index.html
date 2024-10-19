@@ -421,13 +421,13 @@
             <button id="name-input-button">Enter Player Names</button>
             <div>
                 <label for="ai-toggle">Play against AI:</label>
-                <input type="checkbox" id="ai-toggle">
+                <input type="checkbox" id="ai-toggle" checked>
             </div>
             <div>
                 <label for="ai-difficulty">AI Difficulty:</label>
                 <select id="ai-difficulty">
                     <option value="easy">Easy</option>
-                    <option value="medium">Medium</option>
+                    <option value="medium" selected>Medium</option>
                     <option value="hard">Hard</option>
                     <option value="impossible">Impossible</option>
                 </select>
@@ -1252,6 +1252,45 @@
             initializeGameBoard();
             gameBoard.classList.remove("game-active");
             updateAIControls();
+
+            document.addEventListener("DOMContentLoaded", function() {
+                // Set default values
+                isAIGame = true;
+                aiDifficulty = "medium";
+
+                // Update UI to reflect default values
+                document.getElementById("ai-toggle").checked = true;
+                document.getElementById("ai-difficulty").value = "medium";
+
+                // Initialize the game with these settings
+                initializeGame();
+            });
+
+            function initializeGame() {
+                // ... existing initialization code ...
+
+                // Update game state based on AI settings
+                isAIGame = document.getElementById("ai-toggle").checked;
+                aiDifficulty = document.getElementById("ai-difficulty").value;
+
+                // If it's an AI game and AI goes first, trigger AI move
+                if (isAIGame && currentPlayer === "O") {
+                    setTimeout(makeAIMove, 500);
+                }
+
+                // ... rest of initialization code ...
+            }
+
+            document.getElementById("ai-toggle").addEventListener("change", function() {
+                isAIGame = this.checked;
+                if (isAIGame && currentPlayer === "O") {
+                    setTimeout(makeAIMove, 500);
+                }
+            });
+
+            document.getElementById("ai-difficulty").addEventListener("change", function() {
+                aiDifficulty = this.value;
+            });
         });
     </script>
 </body>
