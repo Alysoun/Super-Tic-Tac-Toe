@@ -728,9 +728,15 @@
 
             function makeAIMove() {
                 console.log("AI move started");
+                if (currentPlayer !== "O") {
+                    console.log("Not AI's turn, aborting AI move");
+                    return;
+                }
                 gameBoard.classList.add("ai-thinking");
                 
-                const timeLimit = 3000; // 3 seconds time limit
+                const timeLimit = 5000; // Increase to 5 seconds for more thinking time
+                const minMoveTime = 2000; // Minimum 2 seconds before making a move
+                const maxAdditionalTime = 2000; // Up to 2 additional seconds of random delay
                 const startTime = Date.now();
                 let bestMove = null;
 
@@ -767,15 +773,19 @@
                                     bestMove = Math.random() < 0.85 ? makeBestMove(5, timeLimit - elapsedTime, startTime, validBoardRow, validBoardCol) : makeRandomMove(validBoardRow, validBoardCol);
                                     break;
                                 case 'impossible':
-                                    bestMove = makeBestMove(9, timeLimit - elapsedTime, startTime, validBoardRow, validBoardCol);
+                                    bestMove = makeBestMove(11, timeLimit - elapsedTime, startTime, validBoardRow, validBoardCol); // Increase depth to 11
                                     break;
                             }
                             console.log(`Move found: ${JSON.stringify(bestMove)}`);
                         }
 
                         if (bestMove) {
-                            console.log("Best move found, resolving");
-                            resolve(bestMove);
+                            console.log("Best move found, waiting to resolve");
+                            const elapsedTime = Date.now() - startTime;
+                            const baseRemainingTime = Math.max(0, minMoveTime - elapsedTime);
+                            const additionalRandomTime = Math.random() * maxAdditionalTime;
+                            const totalDelay = baseRemainingTime + additionalRandomTime;
+                            setTimeout(() => resolve(bestMove), totalDelay);
                         } else {
                             console.log("No move found yet, checking again in 100ms");
                             setTimeout(findMove, 100);
@@ -886,20 +896,17 @@
 
             function handleCellClick(event) {
                 if (!gameBoard.classList.contains("game-active") || (isAIGame && currentPlayer === "O")) return;
-                // Handle player moves and game logic
+                
                 const cell = event.target;
-                const smallBoardElement = cell.parentElement;
-                const bigRow = parseInt(smallBoardElement.dataset.bigRow);
-                const bigCol = parseInt(smallBoardElement.dataset.bigCol);
+                const bigRow = parseInt(cell.parentElement.dataset.bigRow);
+                const bigCol = parseInt(cell.parentElement.dataset.bigCol);
                 const row = parseInt(cell.dataset.row);
                 const col = parseInt(cell.dataset.col);
 
-                // Check if the move is valid
-                if (cell.textContent !== "" || (nextBoard && (nextBoard[0] !== bigRow || nextBoard[1] !== bigCol))) {
-                    return;
-                }
+                if (smallBoards[bigRow][bigCol][row][col] !== null) return;
+                if (nextBoard !== null && (bigRow !== nextBoard[0] || bigCol !== nextBoard[1])) return;
 
-                // Update the cell and game state
+                // Immediately update the cell and game state
                 cell.textContent = currentPlayer;
                 smallBoards[bigRow][bigCol][row][col] = currentPlayer;
                 cell.classList.add("taken");
@@ -908,68 +915,49 @@
                 const smallBoardWinner = checkWin(smallBoards[bigRow][bigCol]);
                 if (smallBoardWinner) {
                     handleBoardCompletion(bigRow, bigCol, smallBoardWinner);
-                    nextBoard = null; // Reset nextBoard when a small board is won
+                    nextBoard = null;
+                    
+                    // Check for a win on the big board
+                    const bigBoardWinner = checkWin(bigBoard);
+                    if (bigBoardWinner) {
+                        handleBigBoardWin(bigBoardWinner);
+                        return; // End the game
+                    }
                 } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
-                    const xCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "X").length;
-                    const oCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "O").length;
-                    const winner = xCount > oCount ? "X" : oCount > xCount ? "O" : "T";
-                    handleBoardCompletion(bigRow, bigCol, winner);
-                    nextBoard = null; // Reset nextBoard when a small board is full
-                }
-
-                // Check for a win or draw in the big board
-                const bigBoardWinner = checkWin(bigBoard);
-                if (bigBoardWinner) {
-                    // Handle big board win
-                    document.querySelectorAll('.small-board').forEach(board => {
-                        shakeCells(board);
-                    });
-                    setTimeout(() => {
-                        document.querySelectorAll('.small-board').forEach(board => {
-                            createExplosionEffect(board);
-                        });
-                        setTimeout(() => {
-                            showConfetti();
-                            playSound('win');
-                            alert(`${bigBoardWinner} wins the game!`);
-                            if (bigBoardWinner === "X") {
-                                playerXScore++;
-                                playerXScoreElement.textContent = `${playerXName}: ${playerXScore}`;
-                            } else {
-                                playerOScore++;
-                                playerOScoreElement.textContent = `${playerOName}: ${playerOScore}`;
-                            }
-                            resetGame();
-                        }, 1000);
-                    }, 1500);
-                    return;
-                } else if (isBoardFull(bigBoard)) {
-                    // Handle big board draw
-                    setTimeout(() => {
-                        playSound('draw');
-                        alert(`The game is a draw!`);
-                        resetGame();
-                    }, 100);
-                    return;
-                }
-
-                // Determine the next board to play
-                if (bigBoard[row][col] !== null) {
+                    handleBoardCompletion(bigRow, bigCol, "T");
                     nextBoard = null;
                 } else {
-                    nextBoard = [row, col];
+                    nextBoard = bigBoard[row][col] !== null ? null : [row, col];
                 }
 
-                // Update UI and switch players
+                // Update UI
                 highlightActiveBoard();
-                currentPlayer = currentPlayer === "X" ? "O" : "X";
                 updatePlayerIndicator();
-
-                // After updating the current player, check if it's AI's turn
-                if (isAIGame && currentPlayer === "O") {
-                    makeAIMove();
-                }
                 playSound('move');
+
+                // Switch players
+                currentPlayer = currentPlayer === "X" ? "O" : "X";
+
+                // If it's now AI's turn, trigger AI move after a short delay
+                if (isAIGame && currentPlayer === "O") {
+                    setTimeout(() => {
+                        makeAIMove();
+                    }, 100); // Small delay to ensure UI updates are visible
+                }
+            }
+
+            function handleBigBoardWin(winner) {
+                gameBoard.classList.remove("game-active");
+                const winnerName = winner === "X" ? playerXName : playerOName;
+                alert(`${winnerName} wins the game!`);
+                // Update scores and UI as needed
+                if (winner === "X") {
+                    playerXScore++;
+                } else {
+                    playerOScore++;
+                }
+                updateScoreboard();
+                // You might want to add confetti or other win animations here
             }
 
             function highlightActiveBoard() {
@@ -1148,32 +1136,21 @@
                 return bestScore;
             }
 
-            function evaluateBoard(bigBoard, smallBoards, player, lastMove) {
+            function evaluateBoard(bigBoard, smallBoards, player) {
                 let score = 0;
                 const opponent = player === "O" ? "X" : "O";
 
                 // Evaluate big board
-                score += evaluateLines(bigBoard, player, opponent, 10);
+                score += evaluateLines(bigBoard, player, opponent, 1000);
 
                 // Evaluate small boards
                 for (let i = 0; i < 3; i++) {
                     for (let j = 0; j < 3; j++) {
                         if (bigBoard[i][j] === null) {
-                            score += evaluateLines(smallBoards[i][j], player, opponent, 1);
+                            score += evaluateLines(smallBoards[i][j], player, opponent, 10);
+                            score += evaluateCenter(smallBoards[i][j], player);
+                            score += evaluateCorners(smallBoards[i][j], player);
                         }
-                    }
-                }
-
-                // Evaluate strategic positions
-                score += evaluateStrategicPositions(bigBoard, player);
-
-                // Evaluate next move possibilities
-                if (lastMove) {
-                    const [row, col] = lastMove;
-                    if (bigBoard[row][col] === null) {
-                        score += 5; // Bonus for sending opponent to an open board
-                    } else {
-                        score -= 5; // Penalty for sending opponent to a completed board
                     }
                 }
 
@@ -1210,18 +1187,13 @@
                 return score;
             }
 
-            function evaluateStrategicPositions(board, player) {
-                let score = 0;
+            function evaluateCenter(board, player) {
+                return board[1][1] === player ? 5 : 0;
+            }
+
+            function evaluateCorners(board, player) {
                 const corners = [[0, 0], [0, 2], [2, 0], [2, 2]];
-                const center = [1, 1];
-
-                for (const [row, col] of corners) {
-                    if (board[row][col] === player) score += 3;
-                }
-
-                if (board[center[0]][center[1]] === player) score += 5;
-
-                return score;
+                return corners.filter(([r, c]) => board[r][c] === player).length * 3;
             }
 
             function updateBigBoard(bigBoard, bigRow, bigCol) {
