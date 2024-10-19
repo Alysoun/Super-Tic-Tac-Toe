@@ -1053,11 +1053,11 @@
 
                 // Update UI
                 highlightActiveBoard();
-                updatePlayerIndicator();
                 playSound('move');
 
                 // Switch players
                 currentPlayer = currentPlayer === "X" ? "O" : "X";
+                updatePlayerIndicator();
 
                 // If it's now AI's turn, trigger AI move after a short delay
                 if (isAIGame && currentPlayer === "O") {
@@ -1201,6 +1201,21 @@
                     return null;
                 }
 
+                // Check for immediate winning moves or blocking moves
+                for (const move of availableMoves) {
+                    const [bigRow, bigCol, row, col] = move;
+                    
+                    // Check if this move wins a small board
+                    if (wouldWinSmallBoard(smallBoards[bigRow][bigCol], row, col, "O")) {
+                        return move;
+                    }
+                    
+                    // Check if this move blocks opponent from winning a small board
+                    if (wouldWinSmallBoard(smallBoards[bigRow][bigCol], row, col, "X")) {
+                        return move;
+                    }
+                }
+
                 let bestScore = -Infinity;
                 let bestMove = null;
 
@@ -1225,6 +1240,13 @@
 
                 console.log(`makeBestMove returning move: ${JSON.stringify(bestMove)}`);
                 return bestMove;
+            }
+
+            function wouldWinSmallBoard(board, row, col, player) {
+                // Create a copy of the board and make the move
+                const tempBoard = board.map(row => [...row]);
+                tempBoard[row][col] = player;
+                return checkWin(tempBoard) === player;
             }
 
             function minimax(smallBoards, bigBoard, depth, isMaximizing, alpha, beta, lastMove, timeLimit, startTime) {
@@ -1262,7 +1284,7 @@
                 return bestScore;
             }
 
-            function evaluateBoard(bigBoard, smallBoards, player) {
+            function evaluateBoard(bigBoard, smallBoards, player, lastMove) {
                 let score = 0;
                 const opponent = player === "O" ? "X" : "O";
 
@@ -1279,6 +1301,10 @@
                         }
                     }
                 }
+
+                // Evaluate strategic positions on the big board
+                score += evaluateCenter(bigBoard, player) * 100;
+                score += evaluateCorners(bigBoard, player) * 50;
 
                 return score;
             }
