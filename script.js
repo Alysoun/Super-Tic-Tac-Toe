@@ -616,8 +616,22 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    function getDynamicDepth(bigBoard) {
+        // Count the number of empty cells to determine game stage
+        const emptyCells = bigBoard.flat().filter(cell => cell === null).length;
+        
+        // Adjust depth based on the game stage
+        if (emptyCells > 6) {  // Early game, lots of available moves
+            return 3;
+        } else if (emptyCells > 3) {  // Mid game
+            return 5;
+        } else {  // Late game, fewer moves left
+            return 7;
+        }
+    }
+
     function makeBestMove(maxDepth, remainingTime, startTime, validBoardRow, validBoardCol) {
-        console.log(`makeBestMove called with depth ${maxDepth}, remaining time ${remainingTime}ms`);
+        console.log(`makeBestMove called with max depth ${maxDepth}, remaining time ${remainingTime}ms`);
         const availableMoves = getAvailableMoves(validBoardRow, validBoardCol);
         if (availableMoves.length === 0) {
             console.error("No available moves found");
@@ -642,11 +656,17 @@ document.addEventListener("DOMContentLoaded", () => {
         let bestScore = -Infinity;
         let bestMove = null;
 
+        // Calculate dynamic depth based on the current state of the big board
+        const dynamicDepth = getDynamicDepth(bigBoard);
+        const effectiveDepth = Math.min(maxDepth, dynamicDepth);
+
+        console.log(`Using dynamic depth: ${effectiveDepth}`);
+
         for (const move of availableMoves) {
             const [bigRow, bigCol, row, col] = move;
             smallBoards[bigRow][bigCol][row][col] = "O";
             updateBigBoard(bigBoard, bigRow, bigCol);
-            const score = minimax(smallBoards, bigBoard, maxDepth, false, -Infinity, Infinity, [row, col], remainingTime, startTime);
+            const score = minimax(smallBoards, bigBoard, effectiveDepth, false, -Infinity, Infinity, [row, col], remainingTime, startTime);
             smallBoards[bigRow][bigCol][row][col] = null;
             updateBigBoard(bigBoard, bigRow, bigCol);
 
