@@ -247,7 +247,52 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    function makeAIMove() {
+    // Add these new functions at the top of your file
+    let model; // Declare this at the top of your file
+
+    async function loadModel() {
+        if (!model) {
+            const modelUrl = 'https://alysoun.github.io/Super-Tic-Tac-Toe/tfjs_model/model.json';
+            model = await tf.loadGraphModel(modelUrl);
+        }
+        return model;
+    }
+
+    async function getAIMove(board) {
+        const model = await loadModel();
+
+        // Preprocess the board (convert 'X', 'O', null to 1, -1, 0)
+        const input = board.flat().map(cell => cell === 'X' ? 1 : cell === 'O' ? -1 : 0);
+        const inputTensor = tf.tensor2d([input], [1, 9]);
+
+        // Get the model's prediction
+        const prediction = model.predict(inputTensor);
+
+        // Convert prediction to array
+        const moveProbs = await prediction.data();
+
+        // Create an array of valid moves
+        const validMoves = input.map((cell, index) => cell === 0 ? index : -1).filter(index => index !== -1);
+
+        // If there are no valid moves, return null
+        if (validMoves.length === 0) {
+            return null;
+        }
+
+        // Find the best valid move
+        const bestMoveIndex = validMoves.reduce((best, current) => 
+            moveProbs[current] > moveProbs[best] ? current : best
+        );
+
+        // Convert moveIndex to row and column
+        const row = Math.floor(bestMoveIndex / 3);
+        const col = bestMoveIndex % 3;
+
+        return { row, col };
+    }
+
+    // Modify the makeAIMove function
+    async function makeAIMove() {
         console.log("AI move started");
         if (currentPlayer !== "O") {
             console.log("Not AI's turn, aborting AI move");
@@ -255,12 +300,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         gameBoard.classList.add("ai-thinking");
         
-        const timeLimit = 5000; // Increase to 5 seconds for more thinking time
-        const minMoveTime = 2000; // Minimum 2 seconds before making a move
-        const maxAdditionalTime = 2000; // Up to 2 additional seconds of random delay
-        const startTime = Date.now();
-        let bestMove = null;
-
         // Determine the valid board to play in
         let validBoardRow, validBoardCol;
         if (nextBoard) {
@@ -270,101 +309,115 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         console.log(`Valid board: [${validBoardRow}, ${validBoardCol}]`);
 
-        const aiMovePromise = new Promise((resolve) => {
-            function findMove() {
-                const elapsedTime = Date.now() - startTime;
-                console.log(`Elapsed time: ${elapsedTime}ms`);
-                
-                if (elapsedTime > timeLimit) {
-                    console.log("Time limit reached, resolving with best move found or random move");
-                    resolve(bestMove || makeRandomMove(validBoardRow, validBoardCol));
-                    return;
-                }
+        let bestMove;
 
-                if (!bestMove) {
-                    console.log(`Finding move for difficulty: ${aiDifficulty}`);
-                    switch (aiDifficulty) {
-                        case 'easy':
-                            bestMove = makeRandomMove(validBoardRow, validBoardCol);
-                            break;
-                        case 'medium':
-                            bestMove = Math.random() < 0.5 ? makeRandomMove(validBoardRow, validBoardCol) : makeBestMove(3, timeLimit - elapsedTime, startTime, validBoardRow, validBoardCol);
-                            break;
-                        case 'hard':
-                            bestMove = Math.random() < 0.85 ? makeBestMove(5, timeLimit - elapsedTime, startTime, validBoardRow, validBoardCol) : makeRandomMove(validBoardRow, validBoardCol);
-                            break;
-                        case 'impossible':
-                            bestMove = makeBestMove(11, timeLimit - elapsedTime, startTime, validBoardRow, validBoardCol); // Increase depth to 11
-                            break;
-                    }
-                    console.log(`Move found: ${JSON.stringify(bestMove)}`);
-                }
-
-                if (bestMove) {
-                    console.log("Best move found, waiting to resolve");
-                    const elapsedTime = Date.now() - startTime;
-                    const baseRemainingTime = Math.max(0, minMoveTime - elapsedTime);
-                    const additionalRandomTime = Math.random() * maxAdditionalTime;
-                    const totalDelay = baseRemainingTime + additionalRandomTime;
-                    setTimeout(() => resolve(bestMove), totalDelay);
+        if (aiDifficulty === 'impossible') {
+            // Use the TensorFlow.js model for 'impossible' difficulty
+            const currentSmallBoard = validBoardRow !== null && validBoardCol !== null 
+                ? smallBoards[validBoardRow][validBoardCol] 
+                : null;
+            
+            if (currentSmallBoard) {
+                const aiMove = await getAIMove(currentSmallBoard);
+                if (aiMove) {
+                    bestMove = [validBoardRow, validBoardCol, aiMove.row, aiMove.col];
                 } else {
-                    console.log("No move found yet, checking again in 100ms");
-                    setTimeout(findMove, 100);
-                }
-            }
-
-            findMove();
-        });
-
-        aiMovePromise.then((move) => {
-            console.log(`AI decided on move: ${JSON.stringify(move)}`);
-            if (move) {
-                const [bigRow, bigCol, row, col] = move;
-                const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
-                if (cell) {
-                    console.log("Executing AI move");
-                    // Instead of using click(), let's directly update the game state
-                    cell.textContent = currentPlayer;
-                    smallBoards[bigRow][bigCol][row][col] = currentPlayer;
-                    cell.classList.add("taken");
-
-                    // Check for a win or draw in the small board
-                    const smallBoardWinner = checkWin(smallBoards[bigRow][bigCol]);
-                    if (smallBoardWinner) {
-                        handleBoardCompletion(bigRow, bigCol, smallBoardWinner);
-                        nextBoard = null;
-                    } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
-                        const xCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "X").length;
-                        const oCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "O").length;
-                        const winner = xCount > oCount ? "X" : oCount > xCount ? "O" : "T";
-                        handleBoardCompletion(bigRow, bigCol, winner);
-                        nextBoard = null;
-                    }
-
-                    // Determine the next board to play
-                    if (bigBoard[row][col] !== null) {
-                        nextBoard = null;
-                    } else {
-                        nextBoard = [row, col];
-                    }
-
-                    // Update UI and switch players
-                    highlightActiveBoard();
-                    currentPlayer = currentPlayer === "X" ? "O" : "X";
-                    updatePlayerIndicator();
-                    playSound('move');
-
-                    console.log("AI move executed");
-                } else {
-                    console.error("AI tried to make an invalid move:", move);
+                    console.error("AI couldn't find a valid move in the current small board");
+                    // Fallback to a random move if the AI couldn't decide
+                    bestMove = makeRandomMove(validBoardRow, validBoardCol);
                 }
             } else {
-                console.error("AI failed to find a valid move");
+                // If no specific small board is active, choose a move in any board
+                const allBoards = smallBoards.flat();
+                for (let i = 0; i < allBoards.length; i++) {
+                    const boardRow = Math.floor(i / 3);
+                    const boardCol = i % 3;
+                    if (bigBoard[boardRow][boardCol] === null) {
+                        const aiMove = await getAIMove(allBoards[i]);
+                        if (aiMove) {
+                            bestMove = [boardRow, boardCol, aiMove.row, aiMove.col];
+                            break;
+                        }
+                    }
+                }
+                // If still no move found, fallback to random
+                if (!bestMove) {
+                    bestMove = makeRandomMove(null, null);
+                }
+            }
+        } else {
+            // Use the existing AI logic for other difficulties
+            const timeLimit = 5000;
+            const minMoveTime = 2000;
+            const maxAdditionalTime = 2000;
+            const startTime = Date.now();
+
+            switch (aiDifficulty) {
+                case 'easy':
+                    bestMove = makeRandomMove(validBoardRow, validBoardCol);
+                    break;
+                case 'medium':
+                    bestMove = Math.random() < 0.5 ? makeRandomMove(validBoardRow, validBoardCol) : makeBestMove(3, timeLimit, startTime, validBoardRow, validBoardCol);
+                    break;
+                case 'hard':
+                    bestMove = Math.random() < 0.85 ? makeBestMove(5, timeLimit, startTime, validBoardRow, validBoardCol) : makeRandomMove(validBoardRow, validBoardCol);
+                    break;
             }
 
-            gameBoard.classList.remove("ai-thinking");
-            console.log("AI move completed");
-        });
+            // Add a delay to simulate thinking time
+            const elapsedTime = Date.now() - startTime;
+            const baseRemainingTime = Math.max(0, minMoveTime - elapsedTime);
+            const additionalRandomTime = Math.random() * maxAdditionalTime;
+            const totalDelay = baseRemainingTime + additionalRandomTime;
+            await new Promise(resolve => setTimeout(resolve, totalDelay));
+        }
+
+        console.log(`AI decided on move: ${JSON.stringify(bestMove)}`);
+        if (bestMove) {
+            const [bigRow, bigCol, row, col] = bestMove;
+            const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
+            if (cell) {
+                console.log("Executing AI move");
+                cell.textContent = currentPlayer;
+                smallBoards[bigRow][bigCol][row][col] = currentPlayer;
+                cell.classList.add("taken");
+
+                // Check for a win or draw in the small board
+                const smallBoardWinner = checkWin(smallBoards[bigRow][bigCol]);
+                if (smallBoardWinner) {
+                    handleBoardCompletion(bigRow, bigCol, smallBoardWinner);
+                    nextBoard = null;
+                } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
+                    const xCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "X").length;
+                    const oCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "O").length;
+                    const winner = xCount > oCount ? "X" : oCount > xCount ? "O" : "T";
+                    handleBoardCompletion(bigRow, bigCol, winner);
+                    nextBoard = null;
+                }
+
+                // Determine the next board to play
+                if (bigBoard[row][col] !== null) {
+                    nextBoard = null;
+                } else {
+                    nextBoard = [row, col];
+                }
+
+                // Update UI and switch players
+                highlightActiveBoard();
+                currentPlayer = currentPlayer === "X" ? "O" : "X";
+                updatePlayerIndicator();
+                playSound('move');
+
+                console.log("AI move executed");
+            } else {
+                console.error("AI tried to make an invalid move:", bestMove);
+            }
+        } else {
+            console.error("AI failed to find a valid move");
+        }
+
+        gameBoard.classList.remove("ai-thinking");
+        console.log("AI move completed");
     }
 
     function makeRandomMove(validBoardRow, validBoardCol) {
