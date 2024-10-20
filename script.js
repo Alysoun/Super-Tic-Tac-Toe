@@ -260,68 +260,100 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function getAIMove() {
         const model = await loadModel();
+        
+        // // // console.log("Current game state:", smallBoards);
 
-        // Check for immediate win on the big board
-        const bigBoardWin = findImmediateWinOrBlockBigBoard('O');
-        if (bigBoardWin) {
-            const { bigRow, bigCol } = bigBoardWin;
-            const currentSmallBoard = smallBoards[bigRow][bigCol].flat();
-            const winMove = findImmediateWinOrBlock(currentSmallBoard, 'O');
-            if (winMove !== null) {
-                return { bigRow, bigCol, row: Math.floor(winMove / 3), col: winMove % 3 };
+        let validBoardRow, validBoardCol;
+        if (nextBoard) {
+            [validBoardRow, validBoardCol] = nextBoard;
+        } else {
+            validBoardRow = validBoardCol = null;
+        }
+        // // console.log(`Valid board: [${validBoardRow}, ${validBoardCol}]`);
+
+        const validMoves = getAvailableMoves(validBoardRow, validBoardCol);
+        // // console.log("Valid moves:", validMoves);
+
+        // Check for immediate winning moves for AI
+        for (const move of validMoves) {
+            const [bigRow, bigCol, row, col] = move;
+            if (wouldWinSmallBoard(smallBoards[bigRow][bigCol], row, col, 'O')) {
+                if (wouldWinBigBoard(bigBoard, bigRow, bigCol, 'O')) {
+                    // // console.log("Found game-winning move:", move);
+                    return move;
+                }
+                // // console.log("Found board-winning move:", move);
+                return move;
             }
         }
 
-        // Check for immediate block on the big board
-        const bigBoardBlock = findImmediateWinOrBlockBigBoard('X');
-        if (bigBoardBlock) {
-            const { bigRow, bigCol } = bigBoardBlock;
-            const currentSmallBoard = smallBoards[bigRow][bigCol].flat();
-            const blockMove = findImmediateWinOrBlock(currentSmallBoard, 'X');
-            if (blockMove !== null) {
-                return { bigRow, bigCol, row: Math.floor(blockMove / 3), col: blockMove % 3 };
+        // Check for blocking opponent's winning moves
+        for (const move of validMoves) {
+            const [bigRow, bigCol, row, col] = move;
+            if (wouldWinSmallBoard(smallBoards[bigRow][bigCol], row, col, 'X')) {
+                if (wouldWinBigBoard(bigBoard, bigRow, bigCol, 'X')) {
+                    // // console.log("Found game-saving move:", move);
+                    return move;
+                }
+                // // console.log("Found board-saving move:", move);
+                return move;
             }
         }
 
-        // Preprocess the entire 9x9 board (convert 'X', 'O', null to 1, -1, 0)
-        const input = smallBoards.flat(3).map(cell => cell === 'X' ? 1 : cell === 'O' ? -1 : 0);
+        // Use the model for other moves
+        const input = prepareInputForModel(smallBoards, bigBoard);
         const inputTensor = tf.tensor2d([input], [1, 81]);
 
-        // Get the model's prediction
         const prediction = model.predict(inputTensor);
+        // // console.log("Raw model prediction:", await prediction.data());
 
-        // Convert prediction to array
         const moveProbs = await prediction.data();
 
-        // Create an array of valid moves
-        const validMoves = input.map((cell, index) => cell === 0 ? index : -1).filter(index => index !== -1);
+        const rankedMoves = validMoves.map(move => {
+            const [bigRow, bigCol, row, col] = move;
+            const index = bigRow * 27 + bigCol * 9 + row * 3 + col;
+            return { move, prob: moveProbs[index] };
+        }).sort((a, b) => b.prob - a.prob);
 
-        // If there are no valid moves, return null
-        if (validMoves.length === 0) {
-            return null;
-        }
+        // // console.log("Ranked valid moves:", rankedMoves);
 
-        // If no immediate win or block, use the model's prediction and strategic evaluation
-        let bestMove = null;
-        let bestScore = -Infinity;
+        // Choose the move with the highest probability among valid moves
+        const bestMove = rankedMoves[0].move;
 
-        for (const moveIndex of validMoves) {
-            const bigRow = Math.floor(moveIndex / 27);
-            const bigCol = Math.floor((moveIndex % 27) / 9);
-            const row = Math.floor((moveIndex % 9) / 3);
-            const col = moveIndex % 3;
-            
-            const modelScore = moveProbs[moveIndex];
-            const strategicScore = evaluateStrategicValue(bigRow, bigCol, row, col);
-            const totalScore = modelScore + strategicScore * 0.1; // Adjust the weight as needed
-            
-            if (totalScore > bestScore) {
-                bestScore = totalScore;
-                bestMove = { bigRow, bigCol, row, col };
+        // // console.log("Selected move:", bestMove);
+        return bestMove;
+    }
+
+    function wouldWinBigBoard(bigBoard, row, col, player) {
+        const tempBoard = bigBoard.map(row => [...row]);
+        tempBoard[row][col] = player;
+        return checkWin(tempBoard) === player;
+    }
+
+    function prepareInputForModel(smallBoards, bigBoard) {
+        const input = new Array(81).fill(0);
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                const bigBoardValue = bigBoard[i][j];
+                if (bigBoardValue === 'X') {
+                    input[i * 27 + j * 9] = 1;
+                } else if (bigBoardValue === 'O') {
+                    input[i * 27 + j * 9] = -1;
+                } else {
+                    for (let k = 0; k < 3; k++) {
+                        for (let l = 0; l < 3; l++) {
+                            const cellValue = smallBoards[i][j][k][l];
+                            if (cellValue === 'X') {
+                                input[i * 27 + j * 9 + k * 3 + l] = 1;
+                            } else if (cellValue === 'O') {
+                                input[i * 27 + j * 9 + k * 3 + l] = -1;
+                            }
+                        }
+                    }
+                }
             }
         }
-
-        return bestMove;
+        return input;
     }
 
     // Add this constant at the top of your file
@@ -329,41 +361,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Modify the makeAIMove function
     async function makeAIMove() {
-        console.log("AI move started");
+        // // console.log("AI move started");
         if (currentPlayer !== "O") {
-            console.log("Not AI's turn, aborting AI move");
+            // // console.log("Not AI's turn, aborting AI move");
             return;
         }
         gameBoard.classList.add("ai-thinking");
         
-        // Add a delay before the AI makes its move
         await new Promise(resolve => setTimeout(resolve, AI_MOVE_DELAY));
         
-        // Determine the valid board to play in
         let validBoardRow, validBoardCol;
         if (nextBoard) {
             [validBoardRow, validBoardCol] = nextBoard;
         } else {
             validBoardRow = validBoardCol = null;
         }
-        console.log(`Valid board: [${validBoardRow}, ${validBoardCol}]`);
+        // // console.log(`Valid board: [${validBoardRow}, ${validBoardCol}]`);
 
         let bestMove;
 
         if (aiDifficulty === 'impossible') {
-            // Use the TensorFlow.js model for 'impossible' difficulty
             const aiMove = await getAIMove();
-            if (aiMove) {
-                const { bigRow, bigCol, row, col } = aiMove;
+            // // console.log("AI move from TensorFlow model:", aiMove);
+            if (aiMove && aiMove.length === 4) {
+                const [bigRow, bigCol, row, col] = aiMove;
                 if (validBoardRow === null || validBoardCol === null || (bigRow === validBoardRow && bigCol === validBoardCol)) {
-                    bestMove = [bigRow, bigCol, row, col];
+                    bestMove = aiMove;
                 } else {
-                    // If the AI's move is not in the valid board, fall back to a random move
                     bestMove = makeRandomMove(validBoardRow, validBoardCol);
                 }
             } else {
-                console.error("AI couldn't find a valid move");
-                // Fallback to a random move if the AI couldn't decide
+                console.error("Invalid move from TensorFlow model");
                 bestMove = makeRandomMove(validBoardRow, validBoardCol);
             }
         } else {
@@ -384,12 +412,21 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
-        console.log(`AI decided on move: ${JSON.stringify(bestMove)}`);
-        if (bestMove) {
+         console.log(`AI decided on move: ${JSON.stringify(bestMove)}`);
+        if (bestMove && bestMove.length === 4) {
             const [bigRow, bigCol, row, col] = bestMove;
+            if (bigBoard[bigRow][bigCol] !== null) {
+                console.error("AI attempted to play in an already won board:", bestMove);
+                bestMove = makeRandomMove(null, null);
+                if (!bestMove) {
+                    console.error("No valid moves available");
+                    gameBoard.classList.remove("ai-thinking");
+                    return;
+                }
+            }
             const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
             if (cell) {
-                console.log("Executing AI move");
+                // // console.log("Executing AI move");
                 cell.textContent = currentPlayer;
                 smallBoards[bigRow][bigCol][row][col] = currentPlayer;
                 cell.classList.add("taken");
@@ -420,16 +457,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 updatePlayerIndicator();
                 playSound('move');
 
-                console.log("AI move executed");
+                // // console.log("AI move executed");
             } else {
                 console.error("AI tried to make an invalid move:", bestMove);
             }
         } else {
             console.error("AI failed to find a valid move");
+            gameBoard.classList.remove("ai-thinking");
+            return;
         }
 
         gameBoard.classList.remove("ai-thinking");
-        console.log("AI move completed");
+        // // console.log("AI move completed");
     }
 
     function makeRandomMove(validBoardRow, validBoardCol) {
@@ -443,35 +482,27 @@ document.addEventListener("DOMContentLoaded", () => {
     function getAvailableMoves(validBoardRow, validBoardCol) {
         const moves = [];
         if (validBoardRow !== null && validBoardCol !== null) {
-            // Only consider moves in the specified board
-            if (bigBoard[validBoardRow] && bigBoard[validBoardRow][validBoardCol] === null) {
-                if (smallBoards[validBoardRow] && smallBoards[validBoardRow][validBoardCol]) {
-                    for (let row = 0; row < 3; row++) {
-                        for (let col = 0; col < 3; col++) {
-                            if (smallBoards[validBoardRow][validBoardCol][row][col] === null) {
-                                moves.push([validBoardRow, validBoardCol, row, col]);
-                            }
+            // Only consider moves in the specified board if it's not already won
+            if (bigBoard[validBoardRow][validBoardCol] === null) {
+                for (let row = 0; row < 3; row++) {
+                    for (let col = 0; col < 3; col++) {
+                        if (smallBoards[validBoardRow][validBoardCol][row][col] === null) {
+                            moves.push([validBoardRow, validBoardCol, row, col]);
                         }
                     }
-                } else {
-                    console.error(`Invalid smallBoards access at [${validBoardRow}][${validBoardCol}]`);
                 }
             }
         } else {
             // Consider moves in all non-completed boards
             for (let bigRow = 0; bigRow < 3; bigRow++) {
                 for (let bigCol = 0; bigCol < 3; bigCol++) {
-                    if (bigBoard[bigRow] && bigBoard[bigRow][bigCol] === null) {
-                        if (smallBoards[bigRow] && smallBoards[bigRow][bigCol]) {
-                            for (let row = 0; row < 3; row++) {
-                                for (let col = 0; col < 3; col++) {
-                                    if (smallBoards[bigRow][bigCol][row][col] === null) {
-                                        moves.push([bigRow, bigCol, row, col]);
-                                    }
+                    if (bigBoard[bigRow][bigCol] === null) {
+                        for (let row = 0; row < 3; row++) {
+                            for (let col = 0; col < 3; col++) {
+                                if (smallBoards[bigRow][bigCol][row][col] === null) {
+                                    moves.push([bigRow, bigCol, row, col]);
                                 }
                             }
-                        } else {
-                            console.error(`Invalid smallBoards access at [${bigRow}][${bigCol}]`);
                         }
                     }
                 }
@@ -488,6 +519,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const bigCol = parseInt(cell.parentElement.dataset.bigCol);
         const row = parseInt(cell.dataset.row);
         const col = parseInt(cell.dataset.col);
+
+        console.log(`Player clicked: [${bigRow},${bigCol},${row},${col}]`);
 
         if (smallBoards[bigRow][bigCol][row][col] !== null) return;
         if (nextBoard !== null && (bigRow !== nextBoard[0] || bigCol !== nextBoard[1])) return;
@@ -696,7 +729,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function makeBestMove(maxDepth, remainingTime, startTime, validBoardRow, validBoardCol) {
-        console.log(`makeBestMove called with max depth ${maxDepth}, remaining time ${remainingTime}ms`);
+        // // console.log(`makeBestMove called with max depth ${maxDepth}, remaining time ${remainingTime}ms`);
         const availableMoves = getAvailableMoves(validBoardRow, validBoardCol);
         if (availableMoves.length === 0) {
             console.error("No available moves found");
@@ -725,7 +758,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const dynamicDepth = getDynamicDepth(bigBoard);
         const effectiveDepth = Math.min(maxDepth, dynamicDepth);
 
-        console.log(`Using dynamic depth: ${effectiveDepth}`);
+        // // console.log(`Using dynamic depth: ${effectiveDepth}`);
 
         for (const move of availableMoves) {
             const [bigRow, bigCol, row, col] = move;
@@ -741,12 +774,12 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             if (Date.now() - startTime > remainingTime) {
-                console.log("Time limit reached in makeBestMove");
+                // // console.log("Time limit reached in makeBestMove");
                 break;
             }
         }
 
-        console.log(`makeBestMove returning move: ${JSON.stringify(bestMove)}`);
+        // // console.log(`makeBestMove returning move: ${JSON.stringify(bestMove)}`);
         return bestMove;
     }
 
@@ -1106,5 +1139,21 @@ document.addEventListener("DOMContentLoaded", () => {
         if ((row === 0 || row === 2) && (col === 0 || col === 2)) value += 1;
         
         return value;
+    }
+
+    function findWinningMove(board, player) {
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                if (board[i][j] === null) {
+                    board[i][j] = player;
+                    if (checkWin(board) === player) {
+                        board[i][j] = null;
+                        return [i, j];
+                    }
+                    board[i][j] = null;
+                }
+            }
+        }
+        return null;
     }
 });
