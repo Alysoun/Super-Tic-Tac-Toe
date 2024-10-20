@@ -258,12 +258,34 @@ document.addEventListener("DOMContentLoaded", () => {
         return model;
     }
 
-    async function getAIMove(board) {
+    async function getAIMove() {
         const model = await loadModel();
 
-        // Preprocess the board (convert 'X', 'O', null to 1, -1, 0)
-        const input = board.flat().map(cell => cell === 'X' ? 1 : cell === 'O' ? -1 : 0);
-        const inputTensor = tf.tensor2d([input], [1, 9]);
+        // Check for immediate win on the big board
+        const bigBoardWin = findImmediateWinOrBlockBigBoard('O');
+        if (bigBoardWin) {
+            const { bigRow, bigCol } = bigBoardWin;
+            const currentSmallBoard = smallBoards[bigRow][bigCol].flat();
+            const winMove = findImmediateWinOrBlock(currentSmallBoard, 'O');
+            if (winMove !== null) {
+                return { bigRow, bigCol, row: Math.floor(winMove / 3), col: winMove % 3 };
+            }
+        }
+
+        // Check for immediate block on the big board
+        const bigBoardBlock = findImmediateWinOrBlockBigBoard('X');
+        if (bigBoardBlock) {
+            const { bigRow, bigCol } = bigBoardBlock;
+            const currentSmallBoard = smallBoards[bigRow][bigCol].flat();
+            const blockMove = findImmediateWinOrBlock(currentSmallBoard, 'X');
+            if (blockMove !== null) {
+                return { bigRow, bigCol, row: Math.floor(blockMove / 3), col: blockMove % 3 };
+            }
+        }
+
+        // Preprocess the entire 9x9 board (convert 'X', 'O', null to 1, -1, 0)
+        const input = smallBoards.flat(3).map(cell => cell === 'X' ? 1 : cell === 'O' ? -1 : 0);
+        const inputTensor = tf.tensor2d([input], [1, 81]);
 
         // Get the model's prediction
         const prediction = model.predict(inputTensor);
@@ -279,17 +301,31 @@ document.addEventListener("DOMContentLoaded", () => {
             return null;
         }
 
-        // Find the best valid move
-        const bestMoveIndex = validMoves.reduce((best, current) => 
-            moveProbs[current] > moveProbs[best] ? current : best
-        );
+        // If no immediate win or block, use the model's prediction and strategic evaluation
+        let bestMove = null;
+        let bestScore = -Infinity;
 
-        // Convert moveIndex to row and column
-        const row = Math.floor(bestMoveIndex / 3);
-        const col = bestMoveIndex % 3;
+        for (const moveIndex of validMoves) {
+            const bigRow = Math.floor(moveIndex / 27);
+            const bigCol = Math.floor((moveIndex % 27) / 9);
+            const row = Math.floor((moveIndex % 9) / 3);
+            const col = moveIndex % 3;
+            
+            const modelScore = moveProbs[moveIndex];
+            const strategicScore = evaluateStrategicValue(bigRow, bigCol, row, col);
+            const totalScore = modelScore + strategicScore * 0.1; // Adjust the weight as needed
+            
+            if (totalScore > bestScore) {
+                bestScore = totalScore;
+                bestMove = { bigRow, bigCol, row, col };
+            }
+        }
 
-        return { row, col };
+        return bestMove;
     }
+
+    // Add this constant at the top of your file
+    const AI_MOVE_DELAY = 1500; // 1.5 seconds delay
 
     // Modify the makeAIMove function
     async function makeAIMove() {
@@ -299,6 +335,9 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
         gameBoard.classList.add("ai-thinking");
+        
+        // Add a delay before the AI makes its move
+        await new Promise(resolve => setTimeout(resolve, AI_MOVE_DELAY));
         
         // Determine the valid board to play in
         let validBoardRow, validBoardCol;
@@ -313,43 +352,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (aiDifficulty === 'impossible') {
             // Use the TensorFlow.js model for 'impossible' difficulty
-            const currentSmallBoard = validBoardRow !== null && validBoardCol !== null 
-                ? smallBoards[validBoardRow][validBoardCol] 
-                : null;
-            
-            if (currentSmallBoard) {
-                const aiMove = await getAIMove(currentSmallBoard);
-                if (aiMove) {
-                    bestMove = [validBoardRow, validBoardCol, aiMove.row, aiMove.col];
+            const aiMove = await getAIMove();
+            if (aiMove) {
+                const { bigRow, bigCol, row, col } = aiMove;
+                if (validBoardRow === null || validBoardCol === null || (bigRow === validBoardRow && bigCol === validBoardCol)) {
+                    bestMove = [bigRow, bigCol, row, col];
                 } else {
-                    console.error("AI couldn't find a valid move in the current small board");
-                    // Fallback to a random move if the AI couldn't decide
+                    // If the AI's move is not in the valid board, fall back to a random move
                     bestMove = makeRandomMove(validBoardRow, validBoardCol);
                 }
             } else {
-                // If no specific small board is active, choose a move in any board
-                const allBoards = smallBoards.flat();
-                for (let i = 0; i < allBoards.length; i++) {
-                    const boardRow = Math.floor(i / 3);
-                    const boardCol = i % 3;
-                    if (bigBoard[boardRow][boardCol] === null) {
-                        const aiMove = await getAIMove(allBoards[i]);
-                        if (aiMove) {
-                            bestMove = [boardRow, boardCol, aiMove.row, aiMove.col];
-                            break;
-                        }
-                    }
-                }
-                // If still no move found, fallback to random
-                if (!bestMove) {
-                    bestMove = makeRandomMove(null, null);
-                }
+                console.error("AI couldn't find a valid move");
+                // Fallback to a random move if the AI couldn't decide
+                bestMove = makeRandomMove(validBoardRow, validBoardCol);
             }
         } else {
             // Use the existing AI logic for other difficulties
             const timeLimit = 5000;
-            const minMoveTime = 2000;
-            const maxAdditionalTime = 2000;
             const startTime = Date.now();
 
             switch (aiDifficulty) {
@@ -363,13 +382,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     bestMove = Math.random() < 0.85 ? makeBestMove(5, timeLimit, startTime, validBoardRow, validBoardCol) : makeRandomMove(validBoardRow, validBoardCol);
                     break;
             }
-
-            // Add a delay to simulate thinking time
-            const elapsedTime = Date.now() - startTime;
-            const baseRemainingTime = Math.max(0, minMoveTime - elapsedTime);
-            const additionalRandomTime = Math.random() * maxAdditionalTime;
-            const totalDelay = baseRemainingTime + additionalRandomTime;
-            await new Promise(resolve => setTimeout(resolve, totalDelay));
         }
 
         console.log(`AI decided on move: ${JSON.stringify(bestMove)}`);
@@ -1034,4 +1046,65 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // sidebar.appendChild(triggerWinXButton);
     // sidebar.appendChild(triggerWinOButton);
+
+    function checkWinSmallBoard(board) {
+        const winningCombinations = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+            [0, 4, 8], [2, 4, 6]             // Diagonals
+        ];
+        for (const combination of winningCombinations) {
+            const [a, b, c] = combination;
+            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                return board[a];
+            }
+        }
+        return null;
+    }
+
+    function findImmediateWinOrBlock(board, player) {
+        for (let i = 0; i < 9; i++) {
+            if (board[i] === null) {
+                const testBoard = [...board];
+                testBoard[i] = player;
+                if (checkWinSmallBoard(testBoard) === player) {
+                    return i;
+                }
+            }
+        }
+        return null;
+    }
+
+    function findImmediateWinOrBlockBigBoard(player) {
+        for (let bigRow = 0; bigRow < 3; bigRow++) {
+            for (let bigCol = 0; bigCol < 3; bigCol++) {
+                if (bigBoard[bigRow][bigCol] === null) {
+                    const testBigBoard = bigBoard.map(row => [...row]);
+                    testBigBoard[bigRow][bigCol] = player;
+                    if (checkWin(testBigBoard) === player) {
+                        return { bigRow, bigCol };
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    function evaluateStrategicValue(bigRow, bigCol, row, col) {
+        let value = 0;
+        
+        // Prefer center of big board
+        if (bigRow === 1 && bigCol === 1) value += 3;
+        
+        // Prefer corners of big board
+        if ((bigRow === 0 || bigRow === 2) && (bigCol === 0 || bigCol === 2)) value += 2;
+        
+        // Prefer center of small board
+        if (row === 1 && col === 1) value += 2;
+        
+        // Prefer corners of small board
+        if ((row === 0 || row === 2) && (col === 0 || col === 2)) value += 1;
+        
+        return value;
+    }
 });
