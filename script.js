@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let playerOScore = 0;
     let playerXName = "Player X";
     let playerOName = "Player O";
+    let tieScore = 0;
 
     // Initialize game boards
     const bigBoard = Array.from({ length: 3 }, () => Array(3).fill(null));
@@ -179,7 +180,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function handleBoardCompletion(bigRow, bigCol, winner) {
-        // Handle the completion of a small board
         bigBoard[bigRow][bigCol] = winner;
         const smallBoardElement = document.querySelector(`.small-board[data-big-row='${bigRow}'][data-big-col='${bigCol}']`);
         shakeCells(smallBoardElement);
@@ -187,6 +187,13 @@ document.addEventListener("DOMContentLoaded", () => {
             smallBoardElement.classList.add("taken");
             smallBoardElement.dataset.winner = winner;
             createExplosionEffect(smallBoardElement);
+
+            // Keep the last move visible
+            const lastMoveCell = smallBoardElement.querySelector('.cell.last-move');
+            if (lastMoveCell) {
+                lastMoveCell.style.display = 'flex';
+                lastMoveCell.style.zIndex = '11';
+            }
         }, 500);
     }
 
@@ -566,8 +573,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function updateScoreboard() {
-        playerXScoreElement.textContent = `${playerXName}: ${playerXScore}`;
-        playerOScoreElement.textContent = `${playerOName}: ${playerOScore}`;
+        document.getElementById("player-x-score").textContent = `${playerXName}: ${playerXScore}`;
+        document.getElementById("player-o-score").textContent = `${playerOName}: ${playerOScore}`;
+        document.getElementById("tie-score").textContent = `Ties: ${tieScore}`;
     }
 
     function handleBigBoardWin(winner) {
@@ -637,6 +645,19 @@ document.addEventListener("DOMContentLoaded", () => {
         smallBoards.forEach(boardRow => boardRow.forEach(board => board.forEach(row => row.fill(null))));
         nextBoard = null;
         initializeGameBoard();
+        gameInProgress = false;
+        aiToggle.disabled = false;
+        document.querySelectorAll('input[name="first-player"]').forEach(radio => radio.disabled = false);
+        
+        // Remove last-move and won-cell classes
+        document.querySelectorAll('.last-move, .won-cell').forEach(cell => {
+            cell.classList.remove('last-move', 'won-cell');
+        });
+
+        // Remove last-move class
+        document.querySelectorAll('.cell.last-move').forEach(cell => {
+            cell.classList.remove('last-move');
+        });
     }
 
     // Add click event listener to the game board
@@ -645,6 +666,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Add these new variables
     let isAIGame = false;
     let aiDifficulty = 'easy';
+
+    let gameInProgress = false;
+    let currentAIDifficulty = 'medium'; // Default difficulty
 
     function startNewGame() {
         resetGame();
@@ -670,6 +694,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if (isAIGame && currentPlayer === "O") {
             setTimeout(makeAIMove, 500);
         }
+        gameInProgress = true;
+        currentAIDifficulty = aiDifficultySelect.value;
+        aiToggle.disabled = true;
+        document.querySelectorAll('input[name="first-player"]').forEach(radio => radio.disabled = true);
     }
 
     startGameButton.addEventListener("click", startNewGame);
@@ -691,7 +719,18 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     aiDifficultySelect.addEventListener("change", () => {
-        aiDifficulty = aiDifficultySelect.value;
+        if (gameInProgress) {
+            const newDifficulty = aiDifficultySelect.value;
+            if (confirm("Changing AI difficulty will reset the current game. Are you sure you want to proceed?")) {
+                currentAIDifficulty = newDifficulty;
+                resetGame();
+                startNewGame();
+            } else {
+                aiDifficultySelect.value = currentAIDifficulty;
+            }
+        } else {
+            aiDifficulty = aiDifficultySelect.value;
+        }
     });
 
     function updateAIControls() {
@@ -889,10 +928,22 @@ document.addEventListener("DOMContentLoaded", () => {
         return corners.filter(([r, c]) => board[r][c] === player).length * 3;
     }
 
-    function updateBigBoard(bigBoard, bigRow, bigCol) {
+    function updateBigBoard(bigRow, bigCol) {
         const winner = checkWin(smallBoards[bigRow][bigCol]);
         if (winner) {
             bigBoard[bigRow][bigCol] = winner;
+            const miniBoardElement = document.querySelector(`.mini-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"]`);
+            if (miniBoardElement) {
+                miniBoardElement.classList.add('won');
+                miniBoardElement.textContent = winner;
+                
+                // Keep the last-move indicator visible
+                const lastMoveCell = miniBoardElement.querySelector('.last-move');
+                if (lastMoveCell) {
+                    const lastMoveBg = window.getComputedStyle(lastMoveCell).getPropertyValue('box-shadow');
+                    miniBoardElement.style.boxShadow = lastMoveBg;
+                }
+            }
         } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
             bigBoard[bigRow][bigCol] = "T";
         } else {
@@ -992,15 +1043,18 @@ document.addEventListener("DOMContentLoaded", () => {
         hard: { wins: 0, losses: 0, ties: 0 },
         impossible: { wins: 0, losses: 0, ties: 0 }
     };
+    console.log("Loaded stats:", gameStats); // Add this line
 
     function updateStats(result) {
         if (isAIGame) {
             gameStats[aiDifficulty][result]++;
             localStorage.setItem('superTicTacToeStats', JSON.stringify(gameStats));
+            console.log("Updated stats:", JSON.stringify(gameStats)); // Add this line
         }
     }
 
     function displayStats() {
+        console.log("Displaying stats:", gameStats);
         for (const [difficulty, stats] of Object.entries(gameStats)) {
             document.getElementById(`${difficulty}-wins`).textContent = stats.wins;
             document.getElementById(`${difficulty}-losses`).textContent = stats.losses;
@@ -1023,6 +1077,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Event listeners
     document.getElementById('show-stats-button').addEventListener('click', function() {
+        console.log("Show stats button clicked");
         displayStats();
         document.getElementById('stats-modal').style.display = 'block';
     });
@@ -1156,4 +1211,97 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         return null;
     }
+
+    function checkForTie() {
+        // Check if all small boards are either won or full
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                if (bigBoard[i][j] === null && !isBoardFull(smallBoards[i][j])) {
+                    return false; // Game is not tied if any board is neither won nor full
+                }
+            }
+        }
+        return true; // All boards are either won or full
+    }
+
+    function isBoardFull(board) {
+        return board.every(row => row.every(cell => cell !== null));
+    }
+
+    function makeMove(boardRow, boardCol, row, col) {
+        // Remove last-move class from all cells
+        document.querySelectorAll('.cell.last-move').forEach(cell => cell.classList.remove('last-move'));
+
+        smallBoards[boardRow][boardCol][row][col] = currentPlayer;
+        updateCell(boardRow, boardCol, row, col);
+        updateBigBoard(boardRow, boardCol);
+
+        // Add last-move class to the current cell
+        const cell = document.querySelector(`.cell[data-big-row="${boardRow}"][data-big-col="${boardCol}"][data-row="${row}"][data-col="${col}"]`);
+        if (cell) {
+            cell.classList.add('last-move');
+            // Force a redraw
+            cell.style.display = 'none';
+            cell.offsetHeight; // This line is needed to trigger a reflow
+            cell.style.display = '';
+            console.log('Added last-move class to cell:', cell);
+        }
+
+        // Check if the mini-board is won and add won-cell class if necessary
+        if (checkWin(smallBoards[boardRow][boardCol])) {
+            const miniBoardCells = document.querySelectorAll(`.cell[data-big-row="${boardRow}"][data-big-col="${boardCol}"]`);
+            miniBoardCells.forEach(cell => cell.classList.add('won-cell'));
+        }
+
+        // ... rest of the function ...
+    }
+
+    function endGame(result) {
+        gameBoard.classList.remove("game-active");
+        if (result === "T") {
+            alert("The game is a tie!");
+        } else {
+            const winnerName = result === "X" ? playerXName : playerOName;
+            alert(`${winnerName} wins the game!`);
+        }
+        // ... any other end-game logic ...
+        gameInProgress = false;
+        if (result === "T") {
+            tieScore++;
+            document.getElementById("tie-score").textContent = `Ties: ${tieScore}`;
+        }
+    }
+
+    const statsModal = document.getElementById('stats-modal');
+    const showStatsButton = document.getElementById('show-stats-button');
+    const closeStatsButton = document.getElementById('close-stats-button');
+
+    // Show stats modal when the button is clicked
+    showStatsButton.addEventListener('click', function() {
+        displayStats();
+        statsModal.style.display = 'block';
+    });
+
+    // Close stats modal when the close button is clicked
+    closeStatsButton.addEventListener('click', function() {
+        statsModal.style.display = 'none';
+    });
+
+    // Close the modal if clicking outside of it
+    window.addEventListener('click', function(event) {
+        if (event.target == statsModal) {
+            statsModal.style.display = 'none';
+        }
+    });
+
+
+
+    // Call initializeGame when the DOM is fully loaded
+    document.addEventListener("DOMContentLoaded", initializeGame);
+
+    // Add this to your code and check the console
+    console.log("Stored stats:", localStorage.getItem('superTicTacToeStats'));
+
+    console.log('Cells with last-move class:', document.querySelectorAll('.cell.last-move'));
+
 });
