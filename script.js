@@ -252,7 +252,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadModel() {
         if (!model) {
-            const modelUrl = 'https://alysoun.github.io/Super-Tic-Tac-Toe/tfjs_model/model.json';
+            const modelUrl = 'https://alysoun.github.io/Super-Tic-Tac-Toe/tfjs_model2/model.json';
             model = await tf.loadGraphModel(modelUrl);
         }
         return model;
