@@ -1,3 +1,4 @@
+
 document.addEventListener("DOMContentLoaded", () => {
     // DOM element references
     const gameBoard = document.getElementById("game-board");
@@ -100,22 +101,24 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function checkWin(board) {
-        // Check if there's a winner on the given board
-        const winningCombinations = [
-            [[0, 0], [0, 1], [0, 2]],
-            [[1, 0], [1, 1], [1, 2]],
-            [[2, 0], [2, 1], [2, 2]],
-            [[0, 0], [1, 0], [2, 0]],
-            [[0, 1], [1, 1], [2, 1]],
-            [[0, 2], [1, 2], [2, 2]],
-            [[0, 0], [1, 1], [2, 2]],
-            [[0, 2], [1, 1], [2, 0]],
-        ];
-        for (const combination of winningCombinations) {
-            const [a, b, c] = combination;
-            if (board[a[0]][a[1]] && board[a[0]][a[1]] === board[b[0]][b[1]] && board[a[0]][a[1]] === board[c[0]][c[1]]) {
-                return board[a[0]][a[1]];
+        // Horizontal
+        for (let i = 0; i < 3; i++) {
+            if (board[i][0] && board[i][0] === board[i][1] && board[i][0] === board[i][2]) {
+                return board[i][0];
             }
+        }
+        // Vertical
+        for (let j = 0; j < 3; j++) {
+            if (board[0][j] && board[0][j] === board[1][j] && board[0][j] === board[2][j]) {
+                return board[0][j];
+            }
+        }
+        // Diagonals
+        if (board[0][0] && board[0][0] === board[1][1] && board[0][0] === board[2][2]) {
+            return board[0][0];
+        }
+        if (board[0][2] && board[0][2] === board[1][1] && board[0][2] === board[2][0]) {
+            return board[0][2];
         }
         return null;
     }
@@ -182,19 +185,21 @@ document.addEventListener("DOMContentLoaded", () => {
     function handleBoardCompletion(bigRow, bigCol, winner) {
         bigBoard[bigRow][bigCol] = winner;
         const smallBoardElement = document.querySelector(`.small-board[data-big-row='${bigRow}'][data-big-col='${bigCol}']`);
-        shakeCells(smallBoardElement);
-        setTimeout(() => {
-            smallBoardElement.classList.add("taken");
-            smallBoardElement.dataset.winner = winner;
-            createExplosionEffect(smallBoardElement);
+        smallBoardElement.classList.add("taken");
+        smallBoardElement.dataset.winner = winner;
+        
+        // Remove last-move class from all cells in this small board
+        smallBoardElement.querySelectorAll('.cell').forEach(cell => cell.classList.remove('last-move'));
+        
+        // Add visual effect for completed board if desired
+        createExplosionEffect(smallBoardElement);
 
-            // Keep the last move visible
-            const lastMoveCell = smallBoardElement.querySelector('.cell.last-move');
-            if (lastMoveCell) {
-                lastMoveCell.style.display = 'flex';
-                lastMoveCell.style.zIndex = '11';
-            }
-        }, 500);
+        // Keep the last move visible
+        const lastMoveCell = smallBoardElement.querySelector('.cell.last-move');
+        if (lastMoveCell) {
+            lastMoveCell.style.display = 'flex';
+            lastMoveCell.style.zIndex = '11';
+        }
     }
 
     function playSound(type) {
@@ -419,59 +424,40 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
-         console.log(`AI decided on move: ${JSON.stringify(bestMove)}`);
         if (bestMove && bestMove.length === 4) {
             const [bigRow, bigCol, row, col] = bestMove;
-            if (bigBoard[bigRow][bigCol] !== null) {
-                console.error("AI attempted to play in an already won board:", bestMove);
-                bestMove = makeRandomMove(null, null);
-                if (!bestMove) {
-                    console.error("No valid moves available");
-                    gameBoard.classList.remove("ai-thinking");
-                    return;
+            smallBoards[bigRow][bigCol][row][col] = currentPlayer;
+            updateCell(bigRow, bigCol, row, col);
+
+            console.log(`AI decided on move: [${bigRow},${bigCol},${row},${col}]`);
+
+            // Check if the move won the small board
+            if (checkWin(smallBoards[bigRow][bigCol])) {
+                bigBoard[bigRow][bigCol] = currentPlayer;
+                handleBoardCompletion(bigRow, bigCol, currentPlayer);
+                
+                // Check if winning the small board resulted in winning the big board
+                const bigBoardWinner = checkWin(bigBoard);
+                if (bigBoardWinner) {
+                    handleBigBoardWin(bigBoardWinner);
+                    return; // End the game
                 }
+            } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
+                handleBoardCompletion(bigRow, bigCol, "T");
             }
-            const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
-            if (cell) {
-                // // console.log("Executing AI move");
-                cell.textContent = currentPlayer;
-                smallBoards[bigRow][bigCol][row][col] = currentPlayer;
-                cell.classList.add("taken");
 
-                // Check for a win or draw in the small board
-                const smallBoardWinner = checkWin(smallBoards[bigRow][bigCol]);
-                if (smallBoardWinner) {
-                    handleBoardCompletion(bigRow, bigCol, smallBoardWinner);
-                    nextBoard = null;
-                } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
-                    const xCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "X").length;
-                    const oCount = smallBoards[bigRow][bigCol].flat().filter(cell => cell === "O").length;
-                    const winner = xCount > oCount ? "X" : oCount > xCount ? "O" : "T";
-                    handleBoardCompletion(bigRow, bigCol, winner);
-                    nextBoard = null;
-                }
+            console.log("Big Board State after AI move:", JSON.stringify(bigBoard));
+            console.log("Big Board Win Check Result:", checkWin(bigBoard));
 
-                // Determine the next board to play
-                if (bigBoard[row][col] !== null) {
-                    nextBoard = null;
-                } else {
-                    nextBoard = [row, col];
-                }
+            // Switch players
+            currentPlayer = currentPlayer === "X" ? "O" : "X";
+            updatePlayerIndicator();
 
-                // Update UI and switch players
-                highlightActiveBoard();
-                currentPlayer = currentPlayer === "X" ? "O" : "X";
-                updatePlayerIndicator();
-                playSound('move');
-
-                // // console.log("AI move executed");
-            } else {
-                console.error("AI tried to make an invalid move:", bestMove);
-            }
+            // Update the next board
+            nextBoard = bigBoard[row][col] !== null ? null : [row, col];
+            highlightActiveBoard();
         } else {
             console.error("AI failed to find a valid move");
-            gameBoard.classList.remove("ai-thinking");
-            return;
         }
 
         gameBoard.classList.remove("ai-thinking");
@@ -579,6 +565,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function handleBigBoardWin(winner) {
+        console.log("Game won by:", winner);
         gameBoard.classList.remove("game-active");
         const winnerName = winner === "X" ? playerXName : playerOName;
         alert(`${winnerName} wins the game!`);
@@ -613,6 +600,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (startGameButton) {
             startGameButton.scrollIntoView({ behavior: "smooth", block: "center" });
         }
+
+        // Prevent further moves
+        gameBoard.removeEventListener("click", handleCellClick);
     }
 
     function highlightActiveBoard() {
@@ -932,17 +922,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const winner = checkWin(smallBoards[bigRow][bigCol]);
         if (winner) {
             bigBoard[bigRow][bigCol] = winner;
-            const miniBoardElement = document.querySelector(`.mini-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"]`);
-            if (miniBoardElement) {
-                miniBoardElement.classList.add('won');
-                miniBoardElement.textContent = winner;
-                
-                // Keep the last-move indicator visible
-                const lastMoveCell = miniBoardElement.querySelector('.last-move');
-                if (lastMoveCell) {
-                    const lastMoveBg = window.getComputedStyle(lastMoveCell).getPropertyValue('box-shadow');
-                    miniBoardElement.style.boxShadow = lastMoveBg;
-                }
+            // Check for a win on the big board
+            const bigBoardWinner = checkWin(bigBoard);
+            if (bigBoardWinner) {
+                handleBigBoardWin(bigBoardWinner);
+                return; // End the game
             }
         } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
             bigBoard[bigRow][bigCol] = "T";
@@ -1102,6 +1086,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (isAIGame) {
             updateStats('ties');
         }
+        tieScore++;
         updateScoreboard();
         
         // Open the sidebar
@@ -1116,24 +1101,32 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Make sure to call handleTie() when appropriate in your game logic
+/*
+    function triggerWin(player) {
+        if (player === 'T') {
+            handleTie();
+        } else {
+            handleBigBoardWin(player);
+        }
+    }
 
-    // Remove the following functions and button creation code:
+    // Add buttons to the sidebar for triggering wins and ties (for debugging)
+    const triggerWinXButton = document.createElement('button');
+    triggerWinXButton.textContent = 'Trigger Win for X';
+    triggerWinXButton.addEventListener('click', () => triggerWin('X'));
 
-    // function triggerWin(player) {
-    //     // ... (removed)
-    // }
+    const triggerWinOButton = document.createElement('button');
+    triggerWinOButton.textContent = 'Trigger Win for O';
+    triggerWinOButton.addEventListener('click', () => triggerWin('O'));
 
-    // // Add a button to the sidebar for triggering wins (for debugging)
-    // const triggerWinXButton = document.createElement('button');
-    // triggerWinXButton.textContent = 'Trigger Win for X';
-    // triggerWinXButton.addEventListener('click', () => triggerWin('X'));
+    const triggerTieButton = document.createElement('button');
+    triggerTieButton.textContent = 'Trigger Tie';
+    triggerTieButton.addEventListener('click', () => triggerWin('T'));
 
-    // const triggerWinOButton = document.createElement('button');
-    // triggerWinOButton.textContent = 'Trigger Win for O';
-    // triggerWinOButton.addEventListener('click', () => triggerWin('O'));
-
-    // sidebar.appendChild(triggerWinXButton);
-    // sidebar.appendChild(triggerWinOButton);
+    sidebar.appendChild(triggerWinXButton);
+    sidebar.appendChild(triggerWinOButton);
+    sidebar.appendChild(triggerTieButton);
+*/
 
     function checkWinSmallBoard(board) {
         const winningCombinations = [
@@ -1229,31 +1222,25 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function makeMove(boardRow, boardCol, row, col) {
-        // Remove last-move class from all cells
-        document.querySelectorAll('.cell.last-move').forEach(cell => cell.classList.remove('last-move'));
-
         smallBoards[boardRow][boardCol][row][col] = currentPlayer;
         updateCell(boardRow, boardCol, row, col);
-        updateBigBoard(boardRow, boardCol);
 
-        // Add last-move class to the current cell
-        const cell = document.querySelector(`.cell[data-big-row="${boardRow}"][data-big-col="${boardCol}"][data-row="${row}"][data-col="${col}"]`);
-        if (cell) {
-            cell.classList.add('last-move');
-            // Force a redraw
-            cell.style.display = 'none';
-            cell.offsetHeight; // This line is needed to trigger a reflow
-            cell.style.display = '';
-            console.log('Added last-move class to cell:', cell);
-        }
-
-        // Check if the mini-board is won and add won-cell class if necessary
+        // Check if the move won the small board
         if (checkWin(smallBoards[boardRow][boardCol])) {
-            const miniBoardCells = document.querySelectorAll(`.cell[data-big-row="${boardRow}"][data-big-col="${boardCol}"]`);
-            miniBoardCells.forEach(cell => cell.classList.add('won-cell'));
+            bigBoard[boardRow][boardCol] = currentPlayer;
+            
+            // Check if winning the small board resulted in winning the big board
+            if (checkWin(bigBoard)) {
+                handleBigBoardWin(currentPlayer);
+                return; // End the game
+            }
+        } else if (isBoardFull(smallBoards[boardRow][boardCol])) {
+            bigBoard[boardRow][boardCol] = "T"; // Mark as a tie
         }
 
-        // ... rest of the function ...
+        // Continue the game...
+        switchPlayer();
+        updateNextBoard(row, col);
     }
 
     function endGame(result) {
@@ -1304,4 +1291,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
     console.log('Cells with last-move class:', document.querySelectorAll('.cell.last-move'));
 
+    function updateCell(bigRow, bigCol, row, col) {
+        const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
+        if (cell) {
+            cell.textContent = currentPlayer;
+            cell.classList.add("taken");
+            
+            // Remove last-move class from all cells
+            document.querySelectorAll('.cell.last-move').forEach(cell => cell.classList.remove('last-move'));
+            
+            // Add last-move class to the current cell
+            cell.classList.add('last-move');
+        } else {
+            console.error(`Cell not found: ${bigRow},${bigCol},${row},${col}`);
+        }
+    }
 });
+
