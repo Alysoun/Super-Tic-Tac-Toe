@@ -1,622 +1,99 @@
+console.log('Script loaded');
 
-document.addEventListener("DOMContentLoaded", () => {
-    // DOM element references
-    const gameBoard = document.getElementById("game-board");
-    const playerIndicator = document.getElementById("player-indicator");
-    const helpButton = document.getElementById("help-button");
-    const helpText = document.getElementById("help-text");
-    const closeHelpButton = document.getElementById("close-help-button");
-    const overlay = document.getElementById("overlay");
-    const nameInputButton = document.getElementById("name-input-button");
-    const nameInputText = document.getElementById("name-input-text");
-    const saveNamesButton = document.getElementById("save-names-button");
-    const playerXNameModal = document.getElementById("player-x-name-modal");
-    const playerONameModal = document.getElementById("player-o-name-modal");
-    const playerXScoreElement = document.getElementById("player-x-score");
-    const playerOScoreElement = document.getElementById("player-o-score");
-    const startGameButton = document.getElementById("start-game-button");
-    const aiToggle = document.getElementById("ai-toggle");
-    const aiDifficultySelect = document.getElementById("ai-difficulty");
-    const firstPlayerRadios = document.getElementsByName("first-player");
-    const sidebar = document.getElementById("sidebar");
-    const toggleSidebarButton = document.getElementById("toggle-sidebar");
-    const soundToggle = document.getElementById("sound-toggle");
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+let initialized = false;
 
-    // Game state variables
-    let playerXScore = 0;
-    let playerOScore = 0;
-    let playerXName = "Player X";
-    let playerOName = "Player O";
-    let tieScore = 0;
+// Game constants
+const constants = {
+    AI_MOVE_DELAY: 1500,
+    EXPLOSION_DURATION: 1000,
+    NUM_PARTICLES: 30,
+    MINIMUM_MOVES_BEFORE_FREE_RESTART: 5,
+};
 
-    // Initialize game boards
-    const bigBoard = Array.from({ length: 3 }, () => Array(3).fill(null));
-    const smallBoards = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => Array(3).fill(null))));
-    let currentPlayer = "X";
-    let nextBoard = null;
+// Game state management
+const gameState = {
+    bigBoard: Array.from({ length: 3 }, () => Array(3).fill(null)),
+    smallBoards: Array.from({ length: 3 }, () =>
+        Array.from({ length: 3 }, () =>
+            Array.from({ length: 3 }, () => Array(3).fill(null))
+        )
+    ),
+    currentPlayer: "X",
+    nextBoard: null,
+    playerXScore: 0,
+    playerOScore: 0,
+    tieScore: 0,
+    moveCount: 0,
+    isAIGame: false,
+    aiDifficulty: "medium",
+    gameInProgress: false,
+    currentAIDifficulty: "medium",
+    model: null, // For the TensorFlow model
+    playerXName: "Player X",
+    playerOName: "Player O",
+    lastMove: null,
+    winningLine: null,
+    aiMoveInProgress: false,
+};
 
-    // Event listeners for UI elements
-    helpButton.addEventListener("click", () => {
-        // Show help text and overlay
-        helpText.style.display = "block";
-        overlay.style.display = "block";
-    });
+// DOM references
+const DOMElements = {
+    gameBoard: document.getElementById("game-board"),
+    playerIndicator: document.getElementById("player-indicator"),
+    helpButton: document.getElementById("help-button"),
+    helpText: document.getElementById("help-text"),
+    overlay: document.getElementById("overlay"),
+    nameInputButton: document.getElementById("name-input-button"),
+    nameInputText: document.getElementById("name-input-text"),
+    saveNamesButton: document.getElementById("save-names-button"),
+    playerXNameModal: document.getElementById("player-x-name-modal"),
+    playerONameModal: document.getElementById("player-o-name-modal"),
+    playerXScoreElement: document.getElementById("player-x-score"),
+    playerOScoreElement: document.getElementById("player-o-score"),
+    startGameButton: document.getElementById("start-game-button"),
+    aiToggle: document.getElementById("ai-toggle"),
+    aiDifficultySelect: document.getElementById("ai-difficulty"),
+    firstPlayerRadios: document.getElementsByName("first-player"),
+    sidebar: document.getElementById("sidebar"),
+    toggleSidebarButton: document.getElementById("toggle-sidebar"),
+    soundToggle: document.getElementById("sound-toggle"),
+    confettiContainer: document.getElementById("confetti-container"),
+    statsModal: document.getElementById("stats-modal"),
+    showStatsButton: document.getElementById("show-stats-button"),
+    closeStatsButton: document.getElementById("close-stats-button"),
+    closeHelpButton: document.getElementById("close-help-button"),
+};
 
-    closeHelpButton.addEventListener("click", () => {
-        // Hide help text and overlay
-        helpText.style.display = "none";
-        overlay.style.display = "none";
-    });
-
-    overlay.addEventListener("click", () => {
-        // Hide help text and name input text, and overlay
-        helpText.style.display = "none";
-        nameInputText.style.display = "none";
-        overlay.style.display = "none";
-    });
-
-    nameInputButton.addEventListener("click", () => {
-        // Show name input text and overlay
-        nameInputText.style.display = "block";
-        overlay.style.display = "block";
-    });
-
-    saveNamesButton.addEventListener("click", () => {
-        // Save player names and update scoreboard
-        playerXName = playerXNameModal.value || "Player X";
-        playerOName = playerONameModal.value || "Player O";
-        playerXScoreElement.textContent = `${playerXName}: ${playerXScore}`;
-        playerOScoreElement.textContent = `${playerOName}: ${playerOScore}`;
-        nameInputText.style.display = "none";
-        overlay.style.display = "none";
-    });
-
-    function createBoardElement() {
-        // Create and return a small board element
-        const boardElement = document.createElement("div");
-        boardElement.classList.add("small-board");
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                const cell = document.createElement("div");
-                cell.classList.add("cell");
-                cell.dataset.row = i;
-                cell.dataset.col = j;
-                boardElement.appendChild(cell);
-            }
+// UI Manager for handling UI interactions
+const UIManager = {
+    toggleModal: (modalElement, overlay, display) => {
+        modalElement.style.display = display ? "block" : "none";
+        overlay.style.display = display ? "block" : "none";
+    },
+    updateScoreboard: () => {
+        DOMElements.playerXScoreElement.textContent = `${gameState.playerXName}: ${gameState.playerXScore}`;
+        DOMElements.playerOScoreElement.textContent = `${gameState.playerOName}: ${gameState.playerOScore}`;
+        document.getElementById("tie-score").textContent = `Ties: ${gameState.tieScore}`;
+    },
+    updatePlayerIndicator: () => {
+        const playerX = document.getElementById('player-x');
+        const playerO = document.getElementById('player-o');
+        if (playerX && playerO) {
+            playerX.classList.toggle('active', gameState.currentPlayer === 'X');
+            playerO.classList.toggle('active', gameState.currentPlayer === 'O');
         }
-        return boardElement;
-    }
-
-    function initializeGameBoard() {
-        // Create the initial game board structure
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                const boardElement = createBoardElement();
-                boardElement.dataset.bigRow = i;
-                boardElement.dataset.bigCol = j;
-                gameBoard.appendChild(boardElement);
-            }
-        }
-    }
-
-    function checkWin(board) {
-        // Horizontal
-        for (let i = 0; i < 3; i++) {
-            if (board[i][0] && board[i][0] === board[i][1] && board[i][0] === board[i][2]) {
-                return board[i][0];
-            }
-        }
-        // Vertical
-        for (let j = 0; j < 3; j++) {
-            if (board[0][j] && board[0][j] === board[1][j] && board[0][j] === board[2][j]) {
-                return board[0][j];
-            }
-        }
-        // Diagonals
-        if (board[0][0] && board[0][0] === board[1][1] && board[0][0] === board[2][2]) {
-            return board[0][0];
-        }
-        if (board[0][2] && board[0][2] === board[1][1] && board[0][2] === board[2][0]) {
-            return board[0][2];
-        }
-        return null;
-    }
-
-    function isBoardFull(board) {
-        // Check if the given board is full
-        return board.flat().every(cell => cell !== null);
-    }
-
-    function createExplosionEffect(parentElement) {
-        const numParticles = 30; // Number of particles in the explosion
-        const explosionDuration = 1000; // Duration of the explosion animation in milliseconds
-
-        for (let i = 0; i < numParticles; i++) {
-            const particle = document.createElement('div');
-            particle.classList.add('particle');
-            
-            // Randomize particle properties
-            const size = Math.random() * 8 + 4; // Random size between 4px and 12px
-            const angle = Math.random() * 360; // Random angle for particle direction
-            const distance = Math.random() * 100 + 50; // Random distance from center
-            const duration = Math.random() * 0.5 + 0.5; // Random duration between 0.5s and 1s
-            
-            // Set particle styles
-            particle.style.width = `${size}px`;
-            particle.style.height = `${size}px`;
-            particle.style.background = `hsl(${Math.random() * 60 + 10}, 100%, 50%)`; // Random color in yellow-orange range
-            particle.style.borderRadius = '50%';
-            particle.style.position = 'absolute';
-            particle.style.top = '50%';
-            particle.style.left = '50%';
-            particle.style.transform = 'translate(-50%, -50%)';
-            particle.style.opacity = '1';
-
-            // Animate the particle
-            particle.animate([
-                { transform: 'translate(-50%, -50%)', opacity: 1 },
-                { transform: `translate(calc(-50% + ${Math.cos(angle) * distance}px), calc(-50% + ${Math.sin(angle) * distance}px))`, opacity: 0 }
-            ], {
-                duration: explosionDuration * duration,
-                easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
-                fill: 'forwards'
-            });
-
-            parentElement.appendChild(particle);
-
-            // Remove particle after animation
-            setTimeout(() => {
-                particle.remove();
-            }, explosionDuration);
-        }
-    }
-
-    function shakeCells(parentElement) {
-        // Add shake animation to cells
-        parentElement.querySelectorAll('.cell').forEach(cell => {
-            cell.classList.add('shake');
-            setTimeout(() => {
-                cell.classList.remove('shake');
-            }, 1500);
-        });
-    }
-
-    function handleBoardCompletion(bigRow, bigCol, winner) {
-        bigBoard[bigRow][bigCol] = winner;
-        const smallBoardElement = document.querySelector(`.small-board[data-big-row='${bigRow}'][data-big-col='${bigCol}']`);
-        smallBoardElement.classList.add("taken");
-        smallBoardElement.dataset.winner = winner;
-        
-        // Remove last-move class from all cells in this small board
-        smallBoardElement.querySelectorAll('.cell').forEach(cell => cell.classList.remove('last-move'));
-        
-        // Add visual effect for completed board if desired
-        createExplosionEffect(smallBoardElement);
-
-        // Keep the last move visible
-        const lastMoveCell = smallBoardElement.querySelector('.cell.last-move');
-        if (lastMoveCell) {
-            lastMoveCell.style.display = 'flex';
-            lastMoveCell.style.zIndex = '11';
-        }
-    }
-
-    function playSound(type) {
-        if (!soundToggle.checked) return;
-
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        switch (type) {
-            case 'move':
-                oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // A4 note
-                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.1);
-                break;
-            case 'win':
-                oscillator.type = 'square';
-                oscillator.frequency.setValueAtTime(587.33, audioContext.currentTime); // D5 note
-                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.3);
-                setTimeout(() => {
-                    const osc2 = audioContext.createOscillator();
-                    osc2.type = 'square';
-                    osc2.frequency.setValueAtTime(880, audioContext.currentTime); // A5 note
-                    osc2.connect(gainNode);
-                    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-                    osc2.start();
-                    osc2.stop(audioContext.currentTime + 0.3);
-                }, 100);
-                break;
-            case 'draw':
-                oscillator.type = 'triangle';
-                oscillator.frequency.setValueAtTime(349.23, audioContext.currentTime); // F4 note
-                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.2);
-                setTimeout(() => {
-                    const osc2 = audioContext.createOscillator();
-                    osc2.type = 'triangle';
-                    osc2.frequency.setValueAtTime(293.66, audioContext.currentTime); // D4 note
-                    osc2.connect(gainNode);
-                    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-                    osc2.start();
-                    osc2.stop(audioContext.currentTime + 0.2);
-                }, 200);
-                break;
-        }
-    }
-
-    // Add these new functions at the top of your file
-    let model; // Declare this at the top of your file
-
-    async function loadModel() {
-        if (!model) {
-            const modelUrl = 'https://alysoun.github.io/Super-Tic-Tac-Toe/tfjs_model2/model.json';
-            model = await tf.loadGraphModel(modelUrl);
-        }
-        return model;
-    }
-
-    async function getAIMove() {
-        const model = await loadModel();
-        
-        // // // console.log("Current game state:", smallBoards);
-
-        let validBoardRow, validBoardCol;
-        if (nextBoard) {
-            [validBoardRow, validBoardCol] = nextBoard;
-        } else {
-            validBoardRow = validBoardCol = null;
-        }
-        // // console.log(`Valid board: [${validBoardRow}, ${validBoardCol}]`);
-
-        const validMoves = getAvailableMoves(validBoardRow, validBoardCol);
-        // // console.log("Valid moves:", validMoves);
-
-        // Check for immediate winning moves for AI
-        for (const move of validMoves) {
-            const [bigRow, bigCol, row, col] = move;
-            if (wouldWinSmallBoard(smallBoards[bigRow][bigCol], row, col, 'O')) {
-                if (wouldWinBigBoard(bigBoard, bigRow, bigCol, 'O')) {
-                    // // console.log("Found game-winning move:", move);
-                    return move;
-                }
-                // // console.log("Found board-winning move:", move);
-                return move;
-            }
-        }
-
-        // Check for blocking opponent's winning moves
-        for (const move of validMoves) {
-            const [bigRow, bigCol, row, col] = move;
-            if (wouldWinSmallBoard(smallBoards[bigRow][bigCol], row, col, 'X')) {
-                if (wouldWinBigBoard(bigBoard, bigRow, bigCol, 'X')) {
-                    // // console.log("Found game-saving move:", move);
-                    return move;
-                }
-                // // console.log("Found board-saving move:", move);
-                return move;
-            }
-        }
-
-        // Use the model for other moves
-        const input = prepareInputForModel(smallBoards, bigBoard);
-        const inputTensor = tf.tensor2d([input], [1, 81]);
-
-        const prediction = model.predict(inputTensor);
-        // // console.log("Raw model prediction:", await prediction.data());
-
-        const moveProbs = await prediction.data();
-
-        const rankedMoves = validMoves.map(move => {
-            const [bigRow, bigCol, row, col] = move;
-            const index = bigRow * 27 + bigCol * 9 + row * 3 + col;
-            return { move, prob: moveProbs[index] };
-        }).sort((a, b) => b.prob - a.prob);
-
-        // // console.log("Ranked valid moves:", rankedMoves);
-
-        // Choose the move with the highest probability among valid moves
-        const bestMove = rankedMoves[0].move;
-
-        // // console.log("Selected move:", bestMove);
-        return bestMove;
-    }
-
-    function wouldWinBigBoard(bigBoard, row, col, player) {
-        const tempBoard = bigBoard.map(row => [...row]);
-        tempBoard[row][col] = player;
-        return checkWin(tempBoard) === player;
-    }
-
-    function prepareInputForModel(smallBoards, bigBoard) {
-        const input = new Array(81).fill(0);
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                const bigBoardValue = bigBoard[i][j];
-                if (bigBoardValue === 'X') {
-                    input[i * 27 + j * 9] = 1;
-                } else if (bigBoardValue === 'O') {
-                    input[i * 27 + j * 9] = -1;
-                } else {
-                    for (let k = 0; k < 3; k++) {
-                        for (let l = 0; l < 3; l++) {
-                            const cellValue = smallBoards[i][j][k][l];
-                            if (cellValue === 'X') {
-                                input[i * 27 + j * 9 + k * 3 + l] = 1;
-                            } else if (cellValue === 'O') {
-                                input[i * 27 + j * 9 + k * 3 + l] = -1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return input;
-    }
-
-    // Add this constant at the top of your file
-    const AI_MOVE_DELAY = 1500; // 1.5 seconds delay
-
-    // Modify the makeAIMove function
-    async function makeAIMove() {
-        // // console.log("AI move started");
-        if (currentPlayer !== "O") {
-            // // console.log("Not AI's turn, aborting AI move");
-            return;
-        }
-        gameBoard.classList.add("ai-thinking");
-        
-        await new Promise(resolve => setTimeout(resolve, AI_MOVE_DELAY));
-        
-        let validBoardRow, validBoardCol;
-        if (nextBoard) {
-            [validBoardRow, validBoardCol] = nextBoard;
-        } else {
-            validBoardRow = validBoardCol = null;
-        }
-        // // console.log(`Valid board: [${validBoardRow}, ${validBoardCol}]`);
-
-        let bestMove;
-
-        if (aiDifficulty === 'impossible') {
-            const aiMove = await getAIMove();
-            // // console.log("AI move from TensorFlow model:", aiMove);
-            if (aiMove && aiMove.length === 4) {
-                const [bigRow, bigCol, row, col] = aiMove;
-                if (validBoardRow === null || validBoardCol === null || (bigRow === validBoardRow && bigCol === validBoardCol)) {
-                    bestMove = aiMove;
-                } else {
-                    bestMove = makeRandomMove(validBoardRow, validBoardCol);
-                }
-            } else {
-                console.error("Invalid move from TensorFlow model");
-                bestMove = makeRandomMove(validBoardRow, validBoardCol);
-            }
-        } else {
-            // Use the existing AI logic for other difficulties
-            const timeLimit = 5000;
-            const startTime = Date.now();
-
-            switch (aiDifficulty) {
-                case 'easy':
-                    bestMove = makeRandomMove(validBoardRow, validBoardCol);
-                    break;
-                case 'medium':
-                    bestMove = Math.random() < 0.5 ? makeRandomMove(validBoardRow, validBoardCol) : makeBestMove(3, timeLimit, startTime, validBoardRow, validBoardCol);
-                    break;
-                case 'hard':
-                    bestMove = Math.random() < 0.85 ? makeBestMove(5, timeLimit, startTime, validBoardRow, validBoardCol) : makeRandomMove(validBoardRow, validBoardCol);
-                    break;
-            }
-        }
-
-        if (bestMove && bestMove.length === 4) {
-            const [bigRow, bigCol, row, col] = bestMove;
-            smallBoards[bigRow][bigCol][row][col] = currentPlayer;
-            updateCell(bigRow, bigCol, row, col);
-
-            console.log(`AI decided on move: [${bigRow},${bigCol},${row},${col}]`);
-
-            // Check if the move won the small board
-            if (checkWin(smallBoards[bigRow][bigCol])) {
-                bigBoard[bigRow][bigCol] = currentPlayer;
-                handleBoardCompletion(bigRow, bigCol, currentPlayer);
-                
-                // Check if winning the small board resulted in winning the big board
-                const bigBoardWinner = checkWin(bigBoard);
-                if (bigBoardWinner) {
-                    handleBigBoardWin(bigBoardWinner);
-                    return; // End the game
-                }
-            } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
-                handleBoardCompletion(bigRow, bigCol, "T");
-            }
-
-            console.log("Big Board State after AI move:", JSON.stringify(bigBoard));
-            console.log("Big Board Win Check Result:", checkWin(bigBoard));
-
-            // Switch players
-            currentPlayer = currentPlayer === "X" ? "O" : "X";
-            updatePlayerIndicator();
-
-            // Update the next board
-            nextBoard = bigBoard[row][col] !== null ? null : [row, col];
-            highlightActiveBoard();
-        } else {
-            console.error("AI failed to find a valid move");
-        }
-
-        gameBoard.classList.remove("ai-thinking");
-        // // console.log("AI move completed");
-    }
-
-    function makeRandomMove(validBoardRow, validBoardCol) {
-        const availableMoves = getAvailableMoves(validBoardRow, validBoardCol);
-        if (availableMoves.length > 0) {
-            return availableMoves[Math.floor(Math.random() * availableMoves.length)];
-        }
-        return null;
-    }
-
-    function getAvailableMoves(validBoardRow, validBoardCol) {
-        const moves = [];
-        if (validBoardRow !== null && validBoardCol !== null) {
-            // Only consider moves in the specified board if it's not already won
-            if (bigBoard[validBoardRow][validBoardCol] === null) {
-                for (let row = 0; row < 3; row++) {
-                    for (let col = 0; col < 3; col++) {
-                        if (smallBoards[validBoardRow][validBoardCol][row][col] === null) {
-                            moves.push([validBoardRow, validBoardCol, row, col]);
-                        }
-                    }
-                }
-            }
-        } else {
-            // Consider moves in all non-completed boards
-            for (let bigRow = 0; bigRow < 3; bigRow++) {
-                for (let bigCol = 0; bigCol < 3; bigCol++) {
-                    if (bigBoard[bigRow][bigCol] === null) {
-                        for (let row = 0; row < 3; row++) {
-                            for (let col = 0; col < 3; col++) {
-                                if (smallBoards[bigRow][bigCol][row][col] === null) {
-                                    moves.push([bigRow, bigCol, row, col]);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return moves;
-    }
-
-    function handleCellClick(event) {
-        if (!gameBoard.classList.contains("game-active") || (isAIGame && currentPlayer === "O")) return;
-        
-        const cell = event.target;
-        const bigRow = parseInt(cell.parentElement.dataset.bigRow);
-        const bigCol = parseInt(cell.parentElement.dataset.bigCol);
-        const row = parseInt(cell.dataset.row);
-        const col = parseInt(cell.dataset.col);
-
-        console.log(`Player clicked: [${bigRow},${bigCol},${row},${col}]`);
-
-        if (smallBoards[bigRow][bigCol][row][col] !== null) return;
-        if (nextBoard !== null && (bigRow !== nextBoard[0] || bigCol !== nextBoard[1])) return;
-
-        // Immediately update the cell and game state
-        cell.textContent = currentPlayer;
-        smallBoards[bigRow][bigCol][row][col] = currentPlayer;
-        cell.classList.add("taken");
-
-        // Check for a win or draw in the small board
-        const smallBoardWinner = checkWin(smallBoards[bigRow][bigCol]);
-        if (smallBoardWinner) {
-            handleBoardCompletion(bigRow, bigCol, smallBoardWinner);
-            nextBoard = null;
-            
-            // Check for a win on the big board
-            const bigBoardWinner = checkWin(bigBoard);
-            if (bigBoardWinner) {
-                handleBigBoardWin(bigBoardWinner);
-                return; // End the game
-            }
-        } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
-            handleBoardCompletion(bigRow, bigCol, "T");
-            nextBoard = null;
-        } else {
-            nextBoard = bigBoard[row][col] !== null ? null : [row, col];
-        }
-
-        // Update UI
-        highlightActiveBoard();
-        playSound('move');
-
-        // Switch players
-        currentPlayer = currentPlayer === "X" ? "O" : "X";
-        updatePlayerIndicator();
-
-        // If it's now AI's turn, trigger AI move after a short delay
-        if (isAIGame && currentPlayer === "O") {
-            setTimeout(() => {
-                makeAIMove();
-            }, 100); // Small delay to ensure UI updates are visible
-        }
-    }
-
-    function updateScoreboard() {
-        document.getElementById("player-x-score").textContent = `${playerXName}: ${playerXScore}`;
-        document.getElementById("player-o-score").textContent = `${playerOName}: ${playerOScore}`;
-        document.getElementById("tie-score").textContent = `Ties: ${tieScore}`;
-    }
-
-    function handleBigBoardWin(winner) {
-        console.log("Game won by:", winner);
-        gameBoard.classList.remove("game-active");
-        const winnerName = winner === "X" ? playerXName : playerOName;
-        alert(`${winnerName} wins the game!`);
-        
-        if (isAIGame) {
-            if (winner === "X") {
-                updateStats('wins');
-                playerXScore++;
-                showConfetti(); // Only show confetti when human player wins against AI
-            } else {
-                updateStats('losses');
-                playerOScore++;
-            }
-        } else {
-            // For non-AI games, update scores for both players and always show confetti
-            if (winner === "X") {
-                playerXScore++;
-            } else {
-                playerOScore++;
-            }
-            showConfetti();
-        }
-        
-        updateScoreboard();
-        
-        // Open the sidebar
-        sidebar.classList.add("visible");
-        toggleSidebarButton.textContent = "Hide Sidebar";
-        
-        // Scroll to the "Start New Game" button
-        const startGameButton = document.getElementById("start-game-button");
-        if (startGameButton) {
-            startGameButton.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-
-        // Prevent further moves
-        gameBoard.removeEventListener("click", handleCellClick);
-    }
-
-    function highlightActiveBoard() {
-        // Highlight the active board(s) for the next move
+    },
+    highlightActiveBoard: () => {
         document.querySelectorAll(".small-board").forEach(board => {
             board.classList.remove("active-board");
         });
-        if (nextBoard) {
-            const [bigRow, bigCol] = nextBoard;
+        if (gameState.nextBoard) {
+            const [bigRow, bigCol] = gameState.nextBoard;
             const activeBoard = document.querySelector(`.small-board[data-big-row='${bigRow}'][data-big-col='${bigCol}']`);
             if (activeBoard && !activeBoard.classList.contains("taken")) {
                 activeBoard.classList.add("active-board");
             } else {
-                nextBoard = null;
+                gameState.nextBoard = null;
                 document.querySelectorAll(".small-board:not(.taken)").forEach(board => {
                     board.classList.add("active-board");
                 });
@@ -626,685 +103,1125 @@ document.addEventListener("DOMContentLoaded", () => {
                 board.classList.add("active-board");
             });
         }
-    }
-
-    function resetGame() {
-        gameBoard.classList.remove("game-active");
-        gameBoard.innerHTML = "";
-        bigBoard.forEach(row => row.fill(null));
-        smallBoards.forEach(boardRow => boardRow.forEach(board => board.forEach(row => row.fill(null))));
-        nextBoard = null;
-        initializeGameBoard();
-        gameInProgress = false;
-        aiToggle.disabled = false;
-        document.querySelectorAll('input[name="first-player"]').forEach(radio => radio.disabled = false);
-        
-        // Remove last-move and won-cell classes
-        document.querySelectorAll('.last-move, .won-cell').forEach(cell => {
-            cell.classList.remove('last-move', 'won-cell');
-        });
-
-        // Remove last-move class
-        document.querySelectorAll('.cell.last-move').forEach(cell => {
-            cell.classList.remove('last-move');
-        });
-    }
-
-    // Add click event listener to the game board
-    gameBoard.addEventListener("click", handleCellClick);
-
-    // Add these new variables
-    let isAIGame = false;
-    let aiDifficulty = 'easy';
-
-    let gameInProgress = false;
-    let currentAIDifficulty = 'medium'; // Default difficulty
-
-    function startNewGame() {
-        resetGame();
-        let startingPlayer = "X";
-        const selectedFirstPlayer = document.querySelector('input[name="first-player"]:checked').value;
-        
-        if (selectedFirstPlayer === "random") {
-            startingPlayer = Math.random() < 0.5 ? "X" : "O";
-        } else if (selectedFirstPlayer === "ai" && isAIGame) {
-            startingPlayer = "O";
-        }
-
-        currentPlayer = startingPlayer;
-        updatePlayerIndicator();
-        gameBoard.classList.add("game-active");
-        
-        // Hide the sidebar
-        sidebar.classList.remove("visible");
-        toggleSidebarButton.textContent = "Show Sidebar";
-        
-        isAIGame = aiToggle.checked;
-        
-        if (isAIGame && currentPlayer === "O") {
-            setTimeout(makeAIMove, 500);
-        }
-        gameInProgress = true;
-        currentAIDifficulty = aiDifficultySelect.value;
-        aiToggle.disabled = true;
-        document.querySelectorAll('input[name="first-player"]').forEach(radio => radio.disabled = true);
-    }
-
-    startGameButton.addEventListener("click", startNewGame);
-
-    function updatePlayerIndicator() {
-        const playerX = document.getElementById('player-x');
-        const playerO = document.getElementById('player-o');
-        
-        playerX.classList.toggle('active', currentPlayer === 'X');
-        playerO.classList.toggle('active', currentPlayer === 'O');
-        
-        playerX.querySelector('.player-name').textContent = isAIGame ? 'Player' : 'Player X';
-        playerO.querySelector('.player-name').textContent = isAIGame ? 'AI' : 'Player O';
-    }
-
-    aiToggle.addEventListener("change", () => {
-        isAIGame = aiToggle.checked;
-        updateAIControls();
-    });
-
-    aiDifficultySelect.addEventListener("change", () => {
-        if (gameInProgress) {
-            const newDifficulty = aiDifficultySelect.value;
-            if (confirm("Changing AI difficulty will reset the current game. Are you sure you want to proceed?")) {
-                currentAIDifficulty = newDifficulty;
-                resetGame();
-                startNewGame();
-            } else {
-                aiDifficultySelect.value = currentAIDifficulty;
-            }
-        } else {
-            aiDifficulty = aiDifficultySelect.value;
-        }
-    });
-
-    function updateAIControls() {
-        const aiFirstRadio = document.getElementById("ai-first");
-        aiFirstRadio.disabled = !isAIGame;
-        if (!isAIGame && aiFirstRadio.checked) {
-            document.getElementById("player-first").checked = true;
-        }
-        
-        // Clear existing options
-        aiDifficultySelect.innerHTML = '';
-        
-        // Add all options
-        const difficulties = ['easy', 'medium', 'hard', 'impossible'];
-        difficulties.forEach(difficulty => {
-            const option = document.createElement("option");
-            option.value = difficulty;
-            option.textContent = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
-            aiDifficultySelect.appendChild(option);
-        });
-    }
-
-    function getDynamicDepth(bigBoard) {
-        // Count the number of empty cells to determine game stage
-        const emptyCells = bigBoard.flat().filter(cell => cell === null).length;
-        
-        // Adjust depth based on the game stage
-        if (emptyCells > 6) {  // Early game, lots of available moves
-            return 3;
-        } else if (emptyCells > 3) {  // Mid game
-            return 5;
-        } else {  // Late game, fewer moves left
-            return 7;
-        }
-    }
-
-    function makeBestMove(maxDepth, remainingTime, startTime, validBoardRow, validBoardCol) {
-        // // console.log(`makeBestMove called with max depth ${maxDepth}, remaining time ${remainingTime}ms`);
-        const availableMoves = getAvailableMoves(validBoardRow, validBoardCol);
-        if (availableMoves.length === 0) {
-            console.error("No available moves found");
-            return null;
-        }
-
-        // Check for immediate winning moves or blocking moves
-        for (const move of availableMoves) {
-            const [bigRow, bigCol, row, col] = move;
-            
-            // Check if this move wins a small board
-            if (wouldWinSmallBoard(smallBoards[bigRow][bigCol], row, col, "O")) {
-                return move;
-            }
-            
-            // Check if this move blocks opponent from winning a small board
-            if (wouldWinSmallBoard(smallBoards[bigRow][bigCol], row, col, "X")) {
-                return move;
-            }
-        }
-
-        let bestScore = -Infinity;
-        let bestMove = null;
-
-        // Calculate dynamic depth based on the current state of the big board
-        const dynamicDepth = getDynamicDepth(bigBoard);
-        const effectiveDepth = Math.min(maxDepth, dynamicDepth);
-
-        // // console.log(`Using dynamic depth: ${effectiveDepth}`);
-
-        for (const move of availableMoves) {
-            const [bigRow, bigCol, row, col] = move;
-            smallBoards[bigRow][bigCol][row][col] = "O";
-            updateBigBoard(bigBoard, bigRow, bigCol);
-            const score = minimax(smallBoards, bigBoard, effectiveDepth, false, -Infinity, Infinity, [row, col], remainingTime, startTime);
-            smallBoards[bigRow][bigCol][row][col] = null;
-            updateBigBoard(bigBoard, bigRow, bigCol);
-
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-
-            if (Date.now() - startTime > remainingTime) {
-                // // console.log("Time limit reached in makeBestMove");
-                break;
-            }
-        }
-
-        // // console.log(`makeBestMove returning move: ${JSON.stringify(bestMove)}`);
-        return bestMove;
-    }
-
-    function wouldWinSmallBoard(board, row, col, player) {
-        // Create a copy of the board and make the move
-        const tempBoard = board.map(row => [...row]);
-        tempBoard[row][col] = player;
-        return checkWin(tempBoard) === player;
-    }
-
-    function minimax(smallBoards, bigBoard, depth, isMaximizing, alpha, beta, lastMove, timeLimit, startTime) {
-        if (Date.now() - startTime > timeLimit) {
-            return isMaximizing ? -Infinity : Infinity;
-        }
-
-        const bigBoardWinner = checkWin(bigBoard);
-        if (bigBoardWinner === "O") return 1000 + depth;
-        if (bigBoardWinner === "X") return -1000 - depth;
-        if (isBoardFull(bigBoard) || depth === 0) return evaluateBoard(bigBoard, smallBoards, isMaximizing ? "O" : "X", lastMove);
-
-        const availableMoves = getAvailableMoves(lastMove[0], lastMove[1]);
-        let bestScore = isMaximizing ? -Infinity : Infinity;
-
-        for (const move of availableMoves) {
-            const [bigRow, bigCol, row, col] = move;
-            smallBoards[bigRow][bigCol][row][col] = isMaximizing ? "O" : "X";
-            updateBigBoard(bigBoard, bigRow, bigCol);
-            const score = minimax(smallBoards, bigBoard, depth - 1, !isMaximizing, alpha, beta, [row, col], timeLimit, startTime);
-            smallBoards[bigRow][bigCol][row][col] = null;
-            updateBigBoard(bigBoard, bigRow, bigCol);
-
-            if (isMaximizing) {
-                bestScore = Math.max(score, bestScore);
-                alpha = Math.max(alpha, bestScore);
-            } else {
-                bestScore = Math.min(score, bestScore);
-                beta = Math.min(beta, bestScore);
-            }
-
-            if (beta <= alpha) break;
-        }
-
-        return bestScore;
-    }
-
-    function evaluateBoard(bigBoard, smallBoards, player, lastMove) {
-        let score = 0;
-        const opponent = player === "O" ? "X" : "O";
-
-        // Evaluate big board
-        score += evaluateLines(bigBoard, player, opponent, 1000);
-
-        // Evaluate small boards
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                if (bigBoard[i][j] === null) {
-                    score += evaluateLines(smallBoards[i][j], player, opponent, 10);
-                    score += evaluateCenter(smallBoards[i][j], player);
-                    score += evaluateCorners(smallBoards[i][j], player);
-                }
-            }
-        }
-
-        // Evaluate strategic positions on the big board
-        score += evaluateCenter(bigBoard, player) * 100;
-        score += evaluateCorners(bigBoard, player) * 50;
-
-        return score;
-    }
-
-    function evaluateLines(board, player, opponent, weight) {
-        let score = 0;
-        const lines = [
-            [[0, 0], [0, 1], [0, 2]],
-            [[1, 0], [1, 1], [1, 2]],
-            [[2, 0], [2, 1], [2, 2]],
-            [[0, 0], [1, 0], [2, 0]],
-            [[0, 1], [1, 1], [2, 1]],
-            [[0, 2], [1, 2], [2, 2]],
-            [[0, 0], [1, 1], [2, 2]],
-            [[0, 2], [1, 1], [2, 0]]
-        ];
-
-        for (const line of lines) {
-            const [a, b, c] = line;
-            const cellValues = [board[a[0]][a[1]], board[b[0]][b[1]], board[c[0]][c[1]]];
-            const playerCount = cellValues.filter(cell => cell === player).length;
-            const opponentCount = cellValues.filter(cell => cell === opponent).length;
-            const emptyCount = cellValues.filter(cell => cell === null).length;
-
-            if (playerCount === 3) score += 100 * weight;
-            else if (playerCount === 2 && emptyCount === 1) score += 10 * weight;
-            else if (playerCount === 1 && emptyCount === 2) score += 1 * weight;
-            
-            if (opponentCount === 2 && emptyCount === 1) score -= 50 * weight; // Blocking opponent's win
-        }
-
-        return score;
-    }
-
-    function evaluateCenter(board, player) {
-        return board[1][1] === player ? 5 : 0;
-    }
-
-    function evaluateCorners(board, player) {
-        const corners = [[0, 0], [0, 2], [2, 0], [2, 2]];
-        return corners.filter(([r, c]) => board[r][c] === player).length * 3;
-    }
-
-    function updateBigBoard(bigRow, bigCol) {
-        const winner = checkWin(smallBoards[bigRow][bigCol]);
-        if (winner) {
-            bigBoard[bigRow][bigCol] = winner;
-            // Check for a win on the big board
-            const bigBoardWinner = checkWin(bigBoard);
-            if (bigBoardWinner) {
-                handleBigBoardWin(bigBoardWinner);
-                return; // End the game
-            }
-        } else if (isBoardFull(smallBoards[bigRow][bigCol])) {
-            bigBoard[bigRow][bigCol] = "T";
-        } else {
-            bigBoard[bigRow][bigCol] = null;
-        }
-    }
-
-    function toggleSidebar() {
-        sidebar.classList.toggle("visible");
-        toggleSidebarButton.textContent = sidebar.classList.contains("visible") ? "Hide Sidebar" : "Show Sidebar";
-    }
-
-    toggleSidebarButton.addEventListener("click", toggleSidebar);
-
-    // Function to check window size and update sidebar visibility
-    function checkWindowSize() {
-        if (window.innerWidth <= 768) {
-            sidebar.classList.remove("visible");
-            toggleSidebarButton.textContent = "Show Sidebar";
-        } else {
-            sidebar.classList.add("visible");
-            toggleSidebarButton.textContent = "Hide Sidebar";
-        }
-    }
-
-    // Check window size on load and resize
-    window.addEventListener("load", checkWindowSize);
-    window.addEventListener("resize", checkWindowSize);
-
-    // Initially show the sidebar
-    sidebar.classList.add("visible");
-    toggleSidebarButton.textContent = "Hide Sidebar";
-
-    function showConfetti() {
-        const confettiContainer = document.getElementById('confetti-container');
+    },
+    showConfetti: () => {
         for (let i = 0; i < 100; i++) {
             const confetti = document.createElement('div');
             confetti.classList.add('confetti');
             confetti.style.left = `${Math.random() * 100}%`;
             confetti.style.animationDelay = `${Math.random() * 5}s`;
             confetti.style.backgroundColor = `hsl(${Math.random() * 360}, 100%, 50%)`;
-            confettiContainer.appendChild(confetti);
+            DOMElements.confettiContainer.appendChild(confetti);
         }
         setTimeout(() => {
-            confettiContainer.innerHTML = '';
+            DOMElements.confettiContainer.innerHTML = '';
         }, 5000);
-    }
+    },
+    handleBoardCompletion: (bigRow, bigCol, winner) => {
+        gameState.bigBoard[bigRow][bigCol] = winner;
+        const smallBoardElement = document.querySelector(`.small-board[data-big-row='${bigRow}'][data-big-col='${bigCol}']`);
+        smallBoardElement.classList.add("taken");
+        smallBoardElement.dataset.winner = winner;
 
-    // Initialize the game board, but don't start a new game automatically
-    initializeGameBoard();
-    gameBoard.classList.remove("game-active");
-    updateAIControls();
+        // Remove last-move class from all cells in this small board
+        smallBoardElement.querySelectorAll('.cell').forEach(cell => cell.classList.remove('last-move'));
 
-    document.addEventListener("DOMContentLoaded", function() {
-        // Set default values
-        isAIGame = true;
-        aiDifficulty = "medium";
+        // Add visual effect for completed board if desired
+        UIManager.createExplosionEffect(smallBoardElement);
 
-        // Update UI to reflect default values
-        document.getElementById("ai-toggle").checked = true;
-        document.getElementById("ai-difficulty").value = "medium";
-
-        // Initialize the game with these settings
-        initializeGame();
-    });
-
-    function initializeGame() {
-        // ... existing initialization code ...
-
-        // Update game state based on AI settings
-        isAIGame = document.getElementById("ai-toggle").checked;
-        aiDifficulty = document.getElementById("ai-difficulty").value;
-
-        // If it's an AI game and AI goes first, trigger AI move
-        if (isAIGame && currentPlayer === "O") {
-            setTimeout(makeAIMove, 500);
+        // Keep the last move visible
+        const lastMoveCell = smallBoardElement.querySelector('.cell.last-move');
+        if (lastMoveCell) {
+            lastMoveCell.style.display = 'flex';
+            lastMoveCell.style.zIndex = '11';
         }
+    },
+    createExplosionEffect: (parentElement) => {
+        const numParticles = constants.NUM_PARTICLES;
+        const explosionDuration = constants.EXPLOSION_DURATION;
 
-        // ... rest of initialization code ...
-    }
+        for (let i = 0; i < numParticles; i++) {
+            const particle = document.createElement('div');
+            particle.classList.add('particle');
 
-    document.getElementById("ai-toggle").addEventListener("change", function() {
-        isAIGame = this.checked;
-        if (isAIGame && currentPlayer === "O") {
-            setTimeout(makeAIMove, 500);
+            const size = Math.random() * 8 + 4;
+            const angle = Math.random() * 360;
+            const distance = Math.random() * 100 + 50;
+            const duration = Math.random() * 0.5 + 0.5;
+
+            particle.style.width = `${size}px`;
+            particle.style.height = `${size}px`;
+            particle.style.background = `hsl(${Math.random() * 60 + 10}, 100%, 50%)`;
+            particle.style.borderRadius = '50%';
+            particle.style.position = 'absolute';
+            particle.style.top = '50%';
+            particle.style.left = '50%';
+            particle.style.transform = 'translate(-50%, -50%)';
+            particle.style.opacity = '1';
+
+            particle.animate([
+                { transform: 'translate(-50%, -50%)', opacity: 1 },
+                {
+                    transform: `translate(calc(-50% + ${Math.cos(angle) * distance}px), 
+                               calc(-50% + ${Math.sin(angle) * distance}px))`,
+                    opacity: 0
+                }
+            ], {
+                duration: explosionDuration * duration,
+                easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
+                fill: 'forwards'
+            });
+
+            parentElement.appendChild(particle);
+            setTimeout(() => particle.remove(), explosionDuration);
         }
-    });
-
-    document.getElementById("ai-difficulty").addEventListener("change", function() {
-        aiDifficulty = this.value;
-    });
-
-    // Initialize statistics object
-    let gameStats = JSON.parse(localStorage.getItem('superTicTacToeStats')) || {
-        easy: { wins: 0, losses: 0, ties: 0 },
-        medium: { wins: 0, losses: 0, ties: 0 },
-        hard: { wins: 0, losses: 0, ties: 0 },
-        impossible: { wins: 0, losses: 0, ties: 0 }
-    };
-    console.log("Loaded stats:", gameStats); // Add this line
-
-    function updateStats(result) {
-        if (isAIGame) {
-            gameStats[aiDifficulty][result]++;
-            localStorage.setItem('superTicTacToeStats', JSON.stringify(gameStats));
-            console.log("Updated stats:", JSON.stringify(gameStats)); // Add this line
-        }
-    }
-
-    function displayStats() {
-        console.log("Displaying stats:", gameStats);
-        for (const [difficulty, stats] of Object.entries(gameStats)) {
-            document.getElementById(`${difficulty}-wins`).textContent = stats.wins;
-            document.getElementById(`${difficulty}-losses`).textContent = stats.losses;
-            document.getElementById(`${difficulty}-ties`).textContent = stats.ties;
-        }
-    }
-
-    function resetStats() {
-        if (confirm('Are you sure you want to reset all statistics? This cannot be undone.')) {
-            gameStats = {
-                easy: { wins: 0, losses: 0, ties: 0 },
-                medium: { wins: 0, losses: 0, ties: 0 },
-                hard: { wins: 0, losses: 0, ties: 0 },
-                impossible: { wins: 0, losses: 0, ties: 0 }
-            };
-            localStorage.setItem('superTicTacToeStats', JSON.stringify(gameStats));
-            displayStats();
-        }
-    }
-
-    // Event listeners
-    document.getElementById('show-stats-button').addEventListener('click', function() {
-        console.log("Show stats button clicked");
-        displayStats();
-        document.getElementById('stats-modal').style.display = 'block';
-    });
-
-    document.getElementById('close-stats-button').addEventListener('click', function() {
-        document.getElementById('stats-modal').style.display = 'none';
-    });
-
-    document.getElementById('reset-stats-button').addEventListener('click', resetStats);
-
-    // Close the modal if clicking outside of it
-    window.addEventListener('click', function(event) {
-        if (event.target == document.getElementById('stats-modal')) {
-            document.getElementById('stats-modal').style.display = 'none';
-        }
-    });
-
-    // Add a function to handle ties and update stats
-    function handleTie() {
-        gameBoard.classList.remove("game-active");
-        alert("The game is a tie!");
-        if (isAIGame) {
-            updateStats('ties');
-        }
-        tieScore++;
-        updateScoreboard();
+    },
+    shakeCells: (parentElement) => {
+        parentElement.querySelectorAll('.cell').forEach(cell => {
+            cell.classList.add('shake');
+            setTimeout(() => cell.classList.remove('shake'), 1500);
+        });
+    },
+    initializeSidebar() {
+        const sidebar = DOMElements.sidebar;
+        const toggleButton = DOMElements.toggleSidebarButton;
         
-        // Open the sidebar
-        sidebar.classList.add("visible");
-        toggleSidebarButton.textContent = "Hide Sidebar";
-        
-        // Scroll to the "Start New Game" button
-        const startGameButton = document.getElementById("start-game-button");
-        if (startGameButton) {
-            startGameButton.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-    }
-
-    // Make sure to call handleTie() when appropriate in your game logic
-/*
-    function triggerWin(player) {
-        if (player === 'T') {
-            handleTie();
+        // Show sidebar on initial load for desktop
+        if (window.innerWidth > 768) {
+            sidebar.classList.add("visible");
+            toggleButton.textContent = "Hide Sidebar";
         } else {
-            handleBigBoardWin(player);
+            sidebar.classList.remove("visible");
+            toggleButton.textContent = "Show Sidebar";
+        }
+    },
+    
+    updateSidebarOnGameStart() {
+        const sidebar = DOMElements.sidebar;
+        if (window.innerWidth <= 10000000000) {
+            sidebar.classList.remove("visible");
+            DOMElements.toggleSidebarButton.textContent = "Show Sidebar";
+        }
+    }
+};
+
+// Initialize the game board
+function initializeGameBoard() {
+    console.log("Initializing game board...");
+    const gameBoard = DOMElements.gameBoard;
+
+    // Debug check
+    if (!gameBoard) {
+        console.error('Game board element not found!');
+        return;
+    }
+
+    gameBoard.innerHTML = '';
+
+    // Add pointer-events CSS to ensure clicks reach the cells
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+        .big-board {
+            pointer-events: auto;
+        }
+        .small-board {
+            pointer-events: auto;
+        }
+        .cell {
+            pointer-events: auto;
+            cursor: pointer;
+            min-width: 30px;
+            min-height: 30px;
+            border: 1px solid #ccc;
+            position: relative;
+            z-index: 1;
+        }
+    `;
+    document.head.appendChild(styleElement);
+
+    // Create the 3x3 grid of small boards
+    for (let bigRow = 0; bigRow < 3; bigRow++) {
+        for (let bigCol = 0; bigCol < 3; bigCol++) {
+            const smallBoard = document.createElement('div');
+            smallBoard.className = 'small-board';
+            smallBoard.dataset.bigRow = bigRow;
+            smallBoard.dataset.bigCol = bigCol;
+
+            // Create the 3x3 grid of cells within each small board
+            for (let row = 0; row < 3; row++) {
+                for (let col = 0; col < 3; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    cell.dataset.bigRow = bigRow;
+                    cell.dataset.bigCol = bigCol;
+
+                    cell.onclick = function (e) {
+                        console.log('Cell clicked at:', {
+                            bigRow, bigCol, row, col,
+                            gameState: {
+                                inProgress: gameState.gameInProgress,
+                                currentPlayer: gameState.currentPlayer,
+                                nextBoard: gameState.nextBoard
+                            }
+                        });
+
+                        // Visual feedback
+                        this.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                        setTimeout(() => {
+                            this.style.backgroundColor = '';
+                        }, 200);
+
+                        if (!gameState.gameInProgress) {
+                            console.log('Game not in progress');
+                            return;
+                        }
+
+                        // Check if it's a valid move
+                        const validMove = isValidMove(parseInt(bigRow), parseInt(bigCol), parseInt(row), parseInt(col));
+                        console.log('Is valid move?', validMove);
+
+                        if (validMove) {
+                            console.log('Making move...');
+                            const moveResult = makeMove(parseInt(bigRow), parseInt(bigCol), parseInt(row), parseInt(col));
+                            console.log('Move result:', moveResult);
+
+                            // If AI mode is on and it's AI's turn, make AI move
+                            if (moveResult && gameState.isAIGame && gameState.currentPlayer === 'O') {
+                                setTimeout(makeAIMove, 500);
+                            }
+                        } else {
+                            console.log('Invalid move:', {
+                                nextBoard: gameState.nextBoard,
+                                currentCell: gameState.smallBoards[bigRow][bigCol][row][col]
+                            });
+                        }
+                    };
+
+                    smallBoard.appendChild(cell);
+                }
+            }
+
+            gameBoard.appendChild(smallBoard);
         }
     }
 
-    // Add buttons to the sidebar for triggering wins and ties (for debugging)
-    const triggerWinXButton = document.createElement('button');
-    triggerWinXButton.textContent = 'Trigger Win for X';
-    triggerWinXButton.addEventListener('click', () => triggerWin('X'));
+    // Add a test click handler to the game board itself
+    gameBoard.onclick = function (e) {
+        console.log('Game board clicked:', e.target);
+    };
 
-    const triggerWinOButton = document.createElement('button');
-    triggerWinOButton.textContent = 'Trigger Win for O';
-    triggerWinOButton.addEventListener('click', () => triggerWin('O'));
+    console.log('Board initialized with click handlers');
+}
 
-    const triggerTieButton = document.createElement('button');
-    triggerTieButton.textContent = 'Trigger Tie';
-    triggerTieButton.addEventListener('click', () => triggerWin('T'));
+// Check if a move is valid
+function isValidMove(bigRow, bigCol, row, col) {
+    // First check if the big board position is already won
+    if (gameState.bigBoard[bigRow][bigCol] !== null) {
+        return false;
+    }
 
-    sidebar.appendChild(triggerWinXButton);
-    sidebar.appendChild(triggerWinOButton);
-    sidebar.appendChild(triggerTieButton);
-*/
+    // Check if the cell is empty
+    if (gameState.smallBoards[bigRow][bigCol][row][col] !== null) {
+        return false;
+    }
 
-    function checkWinSmallBoard(board) {
-        const winningCombinations = [
-            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
-            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
-            [0, 4, 8], [2, 4, 6]             // Diagonals
-        ];
-        for (const combination of winningCombinations) {
-            const [a, b, c] = combination;
-            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-                return board[a];
-            }
+    // If there's a next board specified
+    if (gameState.nextBoard) {
+        const [nextBigRow, nextBigCol] = gameState.nextBoard;
+        // If the next board is not won and we're trying to play elsewhere
+        if (gameState.bigBoard[nextBigRow][nextBigCol] === null &&
+            (bigRow !== nextBigRow || bigCol !== nextBigCol)) {
+            return false;
         }
+    }
+
+    return true;
+}
+
+// Start a new game
+function startNewGame(isNewStart = false) {
+    clearBoard();
+    gameState.gameInProgress = true;
+    gameState.moveCount = 0;
+    gameState.nextBoard = null;
+
+    UIManager.updateSidebarOnGameStart();
+
+    const aiFirst = document.getElementById('ai-first');
+    if (isNewStart && aiFirst && aiFirst.checked && gameState.isAIGame) {
+        gameState.currentPlayer = 'O';
+        updateUI();
+        if (!gameState.aiMoveInProgress) {
+            makeAIMove();
+        }
+    } else {
+        gameState.currentPlayer = 'X';
+        updateUI();
+    }
+}
+
+// Clear the game board
+function clearBoard() {
+    // Reset game state
+    gameState.smallBoards = Array(3).fill(null).map(() =>
+        Array(3).fill(null).map(() =>
+            Array(3).fill(null).map(() =>
+                Array(3).fill(null)
+            )
+        )
+    );
+    gameState.bigBoard = Array(3).fill(null).map(() => Array(3).fill(null));
+    gameState.nextBoard = null;
+    gameState.currentPlayer = 'X';
+    gameState.gameInProgress = false;
+
+    // Clear UI
+    clearBoardUI();
+}
+
+// Clear the UI elements of the board
+function clearBoardUI() {
+    // Clear all cell contents and classes
+    document.querySelectorAll('.cell').forEach(cell => {
+        cell.textContent = '';
+        cell.className = 'cell';
+        cell.style.backgroundColor = '';
+    });
+
+    // Clear board classes
+    document.querySelectorAll('.small-board').forEach(board => {
+        board.className = 'small-board';
+        board.removeAttribute('data-winner');
+    });
+
+    // Clear any highlights
+    document.querySelectorAll('.active-board').forEach(board => {
+        board.classList.remove('active-board');
+    });
+
+    // Clear any last-move highlights
+    document.querySelectorAll('.last-move').forEach(cell => {
+        cell.classList.remove('last-move');
+    });
+
+    // Clear any confetti
+    if (DOMElements.confettiContainer) {
+        DOMElements.confettiContainer.innerHTML = '';
+    }
+
+    // Reset player indicators
+    const playerX = document.getElementById('player-x');
+    const playerO = document.getElementById('player-o');
+    if (playerX) playerX.classList.add('active');
+    if (playerO) playerO.classList.remove('active');
+}
+
+// Update the UI after each move or state change
+function updateUI() {
+    console.log('Updating UI, current player:', gameState.currentPlayer);
+
+    // Update player turn indicator
+    UIManager.updatePlayerIndicator();
+
+    // Update board highlighting based on next valid move
+    UIManager.highlightActiveBoard();
+}
+
+// Add this to the start game button click handler
+DOMElements.startGameButton.addEventListener('click', () => {
+    // Check if there's a game in progress
+    if (gameState.gameInProgress && gameState.moveCount > 0) {
+        const startNew = confirm('A game is in progress. Start a new game?');
+        if (!startNew) {
+            console.log('New game cancelled, maintaining current game state');
+            return;  // Exit immediately
+        }
+    }
+
+    // Only proceed if user confirmed or no game in progress
+    startNewGame(true);  // Pass flag to indicate it's a fresh start
+    UIManager.updateSidebarOnGameStart(); // Add this line to auto-hide sidebar on game start
+});
+
+// Make a move on the board
+function makeMove(bigRow, bigCol, row, col) {
+    try {
+        // Make the move on the board
+        gameState.smallBoards[bigRow][bigCol][row][col] = gameState.currentPlayer;
+        gameState.moveCount++;
+
+        // Update the cell in the UI
+        updateCell(bigRow, bigCol, row, col);
+
+        // Play move sound
+        AudioManager.playSound('move');
+
+        // Check if this move won the small board
+        if (checkWin(gameState.smallBoards[bigRow][bigCol])) {
+            UIManager.handleBoardCompletion(bigRow, bigCol, gameState.currentPlayer);
+
+            // Check if winning the small board resulted in winning the big board
+            if (checkWin(gameState.bigBoard)) {
+                handleGameEnd(gameState.currentPlayer);
+                return true;
+            }
+        } else if (isBoardFull(gameState.smallBoards[bigRow][bigCol])) {
+            UIManager.handleBoardCompletion(bigRow, bigCol, 'T');
+        }
+
+        // Set the next board based on the current move
+        gameState.nextBoard = gameState.bigBoard[row][col] !== null ? null : [row, col];
+        gameState.lastMove = [bigRow, bigCol, row, col];
+
+        // Switch players
+        gameState.currentPlayer = gameState.currentPlayer === 'X' ? 'O' : 'X';
+
+        // Update the UI
+        updateUI();
+        return true;
+    } catch (error) {
+        console.error('Error in makeMove:', error);
+        return false;
+    }
+}
+
+// Check if there's a winner on the board
+function checkWin(board) {
+    // Check rows
+    for (let i = 0; i < 3; i++) {
+        if (board[i][0] && board[i][0] === board[i][1] && board[i][0] === board[i][2]) {
+            gameState.winningLine = [[i, 0], [i, 1], [i, 2]];
+            return board[i][0];
+        }
+    }
+
+    // Check columns
+    for (let j = 0; j < 3; j++) {
+        if (board[0][j] && board[0][j] === board[1][j] && board[0][j] === board[2][j]) {
+            gameState.winningLine = [[0, j], [1, j], [2, j]];
+            return board[0][j];
+        }
+    }
+
+    // Check diagonals
+    if (board[0][0] && board[0][0] === board[1][1] && board[0][0] === board[2][2]) {
+        gameState.winningLine = [[0, 0], [1, 1], [2, 2]];
+        return board[0][0];
+    }
+    if (board[0][2] && board[0][2] === board[1][1] && board[0][2] === board[2][0]) {
+        gameState.winningLine = [[0, 2], [1, 1], [2, 0]];
+        return board[0][2];
+    }
+
+    return null;
+}
+
+// Update a cell after a move is made
+function updateCell(bigRow, bigCol, row, col) {
+    const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
+    if (cell) {
+        cell.textContent = gameState.currentPlayer;
+        cell.classList.add("taken");
+    }
+}
+
+// Reset the game
+function resetGame() {
+    gameState.bigBoard = Array.from({ length: 3 }, () => Array(3).fill(null));
+    gameState.smallBoards = Array.from({ length: 3 }, () =>
+        Array.from({ length: 3 }, () =>
+            Array.from({ length: 3 }, () => Array(3).fill(null))
+        )
+    );
+    gameState.moveCount = 0;
+    gameState.nextBoard = null;
+    gameState.gameInProgress = false;
+    DOMElements.gameBoard.innerHTML = "";
+    initializeGameBoard();
+}
+
+// Add event listeners to initialize the game
+function initializeEventListeners() {
+    console.log("Initializing event listeners...");
+
+    // Update help modal handlers
+    DOMElements.helpButton.addEventListener("click", () => {
+        UIManager.toggleModal(DOMElements.helpText, DOMElements.overlay, true);
+    });
+
+    DOMElements.closeHelpButton.addEventListener("click", () => {
+        UIManager.toggleModal(DOMElements.helpText, DOMElements.overlay, false);
+    });
+
+    DOMElements.helpButton.addEventListener("click", () => UIManager.toggleModal(DOMElements.helpText, DOMElements.overlay, true));
+    DOMElements.overlay.addEventListener("click", () => UIManager.toggleModal(DOMElements.helpText, DOMElements.overlay, false));
+    DOMElements.toggleSidebarButton.addEventListener("click", toggleSidebar);
+
+    // AI toggle handler
+    DOMElements.aiToggle.addEventListener('change', handleAIToggle);
+
+    // Difficulty change handler
+    DOMElements.aiDifficultySelect.addEventListener('change', handleDifficultyChange);
+
+    // Stats button handlers
+    DOMElements.showStatsButton.addEventListener('click', () => {
+        StatsManager.displayStats();
+        UIManager.toggleModal(DOMElements.statsModal, DOMElements.overlay, true);
+    });
+
+    DOMElements.closeStatsButton.addEventListener('click', () => {
+        UIManager.toggleModal(DOMElements.statsModal, DOMElements.overlay, false);
+    });
+}
+
+// Toggle the sidebar visibility
+function toggleSidebar() {
+    DOMElements.sidebar.classList.toggle("visible");
+    DOMElements.toggleSidebarButton.textContent = DOMElements.sidebar.classList.contains("visible") ? "Hide Sidebar" : "Show Sidebar";
+}
+
+// AI functions
+async function makeAIMove() {
+    if (!gameState.gameInProgress || gameState.currentPlayer !== 'O' || gameState.aiMoveInProgress) {
+        return;
+    }
+
+    gameState.aiMoveInProgress = true;
+    console.log('AI starting to think...');
+
+    try {
+        // Enforce minimum thinking time
+        const MINIMUM_THINK_TIME = 1500; // 1.5 seconds
+        const thinkingStart = Date.now();
+        
+        // Find the best move
+        let move;
+        switch (gameState.aiDifficulty) {
+            case 'impossible':
+                move = await findBestMove(1.0);
+                break;
+            case 'hard':
+                move = await findBestMove(0.85);
+                break;
+            case 'medium':
+                move = await findBestMove(0.5);
+                break;
+            case 'easy':
+            default:
+                move = findRandomMove();
+                break;
+        }
+
+        // Calculate remaining time to meet minimum think time
+        const elapsedTime = Date.now() - thinkingStart;
+        const remainingDelay = Math.max(0, MINIMUM_THINK_TIME - elapsedTime);
+        
+        // Wait for the remaining time if needed
+        if (remainingDelay > 0) {
+            await new Promise(resolve => setTimeout(resolve, remainingDelay));
+        }
+
+        if (move && isValidMove(...move)) {
+            console.log('Making AI move:', move);
+            makeMove(...move);
+        } else {
+            console.error('AI could not find a valid move');
+        }
+    } catch (error) {
+        console.error('Error in AI move:', error);
+    } finally {
+        gameState.aiMoveInProgress = false;
+    }
+}
+
+// AI Helper Functions
+async function predictMove() {
+    try {
+        if (!gameState.model) {
+            const modelUrl = 'https://alysoun.github.io/Super-Tic-Tac-Toe/tfjs_model2/model.json';
+            gameState.model = await tf.loadGraphModel(modelUrl);
+        }
+
+        const input = prepareInputForModel();
+        const prediction = await gameState.model.predict(tf.tensor2d([input], [1, 81])).data();
+        
+        // Get all valid moves
+        const validMoves = getAllValidMoves();
+        
+        // Rank moves by their predicted probability
+        const rankedMoves = validMoves.map(move => {
+            const [bigRow, bigCol, row, col] = move;
+            const index = bigRow * 27 + bigCol * 9 + row * 3 + col;
+            return { move, probability: prediction[index] };
+        }).sort((a, b) => b.probability - a.probability);
+
+        return rankedMoves[0]?.move;
+    } catch (error) {
+        console.error('Error in predictMove:', error);
         return null;
     }
+}
 
-    function findImmediateWinOrBlock(board, player) {
-        for (let i = 0; i < 9; i++) {
-            if (board[i] === null) {
-                const testBoard = [...board];
-                testBoard[i] = player;
-                if (checkWinSmallBoard(testBoard) === player) {
-                    return i;
+function findBestMove(probability = 1.0) {
+    // Use probability to sometimes choose random move instead of best move
+    if (Math.random() > probability) {
+        return findRandomMove();
+    }
+
+    // Check for immediate winning moves
+    const winningMove = findWinningMove('O');
+    if (winningMove) return winningMove;
+
+    // Check for blocking opponent's winning moves
+    const blockingMove = findWinningMove('X');
+    if (blockingMove) return blockingMove;
+
+    // If no immediate winning/blocking moves, use minimax
+    return findStrategicMove();
+}
+
+function findRandomMove() {
+    const validMoves = getAllValidMoves();
+    if (validMoves.length === 0) return null;
+    return validMoves[Math.floor(Math.random() * validMoves.length)];
+}
+
+function getAllValidMoves() {
+    const moves = [];
+    const [nextBigRow, nextBigCol] = gameState.nextBoard || [null, null];
+
+    // If we're restricted to a specific board
+    if (nextBigRow !== null && nextBigCol !== null) {
+        if (gameState.bigBoard[nextBigRow][nextBigCol] === null) {
+            for (let row = 0; row < 3; row++) {
+                for (let col = 0; col < 3; col++) {
+                    if (gameState.smallBoards[nextBigRow][nextBigCol][row][col] === null) {
+                        moves.push([nextBigRow, nextBigCol, row, col]);
+                    }
                 }
             }
         }
-        return null;
     }
 
-    function findImmediateWinOrBlockBigBoard(player) {
+    // If no valid moves in target board (or no target board), check all boards
+    if (moves.length === 0) {
         for (let bigRow = 0; bigRow < 3; bigRow++) {
             for (let bigCol = 0; bigCol < 3; bigCol++) {
-                if (bigBoard[bigRow][bigCol] === null) {
-                    const testBigBoard = bigBoard.map(row => [...row]);
-                    testBigBoard[bigRow][bigCol] = player;
-                    if (checkWin(testBigBoard) === player) {
-                        return { bigRow, bigCol };
+                if (gameState.bigBoard[bigRow][bigCol] === null) {
+                    for (let row = 0; row < 3; row++) {
+                        for (let col = 0; col < 3; col++) {
+                            if (gameState.smallBoards[bigRow][bigCol][row][col] === null) {
+                                moves.push([bigRow, bigCol, row, col]);
+                            }
+                        }
                     }
                 }
             }
         }
-        return null;
     }
 
-    function evaluateStrategicValue(bigRow, bigCol, row, col) {
-        let value = 0;
+    return moves;
+}
+
+function findWinningMove(player) {
+    const validMoves = getAllValidMoves();
+    
+    for (const move of validMoves) {
+        const [bigRow, bigCol, row, col] = move;
         
-        // Prefer center of big board
-        if (bigRow === 1 && bigCol === 1) value += 3;
+        // Try the move
+        gameState.smallBoards[bigRow][bigCol][row][col] = player;
         
-        // Prefer corners of big board
-        if ((bigRow === 0 || bigRow === 2) && (bigCol === 0 || bigCol === 2)) value += 2;
+        // Check if it wins the small board
+        if (checkWin(gameState.smallBoards[bigRow][bigCol])) {
+            // Check if winning the small board wins the game
+            gameState.bigBoard[bigRow][bigCol] = player;
+            const isGameWinning = checkWin(gameState.bigBoard);
+            
+            // Undo the moves
+            gameState.bigBoard[bigRow][bigCol] = null;
+            gameState.smallBoards[bigRow][bigCol][row][col] = null;
+            
+            if (isGameWinning) return move;
+        } else {
+            // Undo the move
+            gameState.smallBoards[bigRow][bigCol][row][col] = null;
+        }
+    }
+    
+    return null;
+}
+
+function findStrategicMove() {
+    const validMoves = getAllValidMoves();
+    let bestScore = -Infinity;
+    let bestMove = null;
+
+    for (const move of validMoves) {
+        const [bigRow, bigCol, row, col] = move;
+        const score = evaluateMove(bigRow, bigCol, row, col);
         
-        // Prefer center of small board
-        if (row === 1 && col === 1) value += 2;
-        
-        // Prefer corners of small board
-        if ((row === 0 || row === 2) && (col === 0 || col === 2)) value += 1;
-        
-        return value;
+        if (score > bestScore) {
+            bestScore = score;
+            bestMove = move;
+        }
     }
 
-    function findWinningMove(board, player) {
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                if (board[i][j] === null) {
-                    board[i][j] = player;
-                    if (checkWin(board) === player) {
-                        board[i][j] = null;
-                        return [i, j];
+    return bestMove;
+}
+
+function evaluateMove(bigRow, bigCol, row, col) {
+    let score = 0;
+    
+    // Early game strategy (first 3 moves)
+    if (gameState.moveCount < 3) {
+        // Massive bonus for center of center board
+        if (bigRow === 1 && bigCol === 1 && row === 1 && col === 1) {
+            return 100000; // Should always take this if available
+        }
+    }
+    
+    // Immediate wins (highest priority)
+    if (wouldWinSmallBoard(bigRow, bigCol, row, col, 'O')) {
+        score += 10000;
+        if (wouldWinBigBoard(bigRow, bigCol, 'O')) {
+            return Infinity;
+        }
+    }
+    
+    // Center board control (second highest priority)
+    if (bigRow === 1 && bigCol === 1) {
+        score += 5000;
+        if (row === 1 && col === 1) {
+            score += 3000;
+        }
+    }
+    
+    // Blocking opponent wins
+    if (wouldWinSmallBoard(bigRow, bigCol, row, col, 'X')) {
+        score += 8000;
+        if (wouldWinBigBoard(bigRow, bigCol, 'X')) {
+            score += 9000;
+        }
+    }
+    
+    // Strategic control
+    score += evaluateStrategicControl(bigRow, bigCol, row, col);
+    
+    return score;
+}
+
+function evaluateStrategicControl(bigRow, bigCol, row, col) {
+    let score = 0;
+    
+    // Center control
+    if (row === 1 && col === 1) score += 1000;
+    
+    // Corner control with additional context
+    if ((row === 0 || row === 2) && (col === 0 || col === 2)) {
+        score += 500;
+        // Extra points if we already have the center
+        if (gameState.smallBoards[bigRow][bigCol][1][1] === 'O') {
+            score += 300;
+        }
+    }
+    
+    // Evaluate forcing moves
+    const nextBoardWon = gameState.bigBoard[row][col] !== null;
+    if (!nextBoardWon) {
+        // Bonus for sending opponent to a board we control
+        if (hasControllingPosition(row, col)) {
+            score += 700;
+        }
+        // Penalty for sending to a board where opponent has advantage
+        if (opponentHasAdvantage(row, col)) {
+            score -= 500;
+        }
+    }
+    
+    return score;
+}
+
+function hasControllingPosition(bigRow, bigCol) {
+    // Check if we have a strong position in the target board
+    const board = gameState.smallBoards[bigRow][bigCol];
+    let ourCount = 0;
+    let centerControl = board[1][1] === 'O';
+    
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            if (board[i][j] === 'O') ourCount++;
+        }
+    }
+    
+    return centerControl || ourCount >= 2;
+}
+
+function opponentHasAdvantage(bigRow, bigCol) {
+    const board = gameState.smallBoards[bigRow][bigCol];
+    let opponentCount = 0;
+    let centerControl = board[1][1] === 'X';
+    
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            if (board[i][j] === 'X') opponentCount++;
+        }
+    }
+    
+    return centerControl || opponentCount >= 2;
+}
+
+// Add this helper function to check if a move creates a fork
+function countWinningThreats(board, player) {
+    let threats = 0;
+    const lines = [
+        // Rows
+        [[0,0], [0,1], [0,2]],
+        [[1,0], [1,1], [1,2]],
+        [[2,0], [2,1], [2,2]],
+        // Columns
+        [[0,0], [1,0], [2,0]],
+        [[0,1], [1,1], [2,1]],
+        [[0,2], [1,2], [2,2]],
+        // Diagonals
+        [[0,0], [1,1], [2,2]],
+        [[0,2], [1,1], [2,0]]
+    ];
+    
+    for (const line of lines) {
+        const values = line.map(([r, c]) => board[r][c]);
+        const playerCount = values.filter(v => v === player).length;
+        const emptyCount = values.filter(v => v === null).length;
+        if (playerCount === 2 && emptyCount === 1) threats++;
+    }
+    
+    return threats;
+}
+
+function countEmptyCells(board) {
+    return board.flat().filter(cell => cell === null).length;
+}
+
+function wouldWinSmallBoard(bigRow, bigCol, row, col, player) {
+    const tempBoard = gameState.smallBoards[bigRow][bigCol].map(row => [...row]);
+    tempBoard[row][col] = player;
+    return checkWin(tempBoard) === player;
+}
+
+function wouldWinBigBoard(bigRow, bigCol, player) {
+    const tempBoard = gameState.bigBoard.map(row => [...row]);
+    tempBoard[bigRow][bigCol] = player;
+    return checkWin(tempBoard) === player;
+}
+
+function prepareInputForModel() {
+    const input = new Array(81).fill(0);
+    
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            const bigBoardValue = gameState.bigBoard[i][j];
+            if (bigBoardValue === 'X') {
+                input[i * 27 + j * 9] = 1;
+            } else if (bigBoardValue === 'O') {
+                input[i * 27 + j * 9] = -1;
+            } else {
+                for (let k = 0; k < 3; k++) {
+                    for (let l = 0; l < 3; l++) {
+                        const value = gameState.smallBoards[i][j][k][l];
+                        const index = i * 27 + j * 9 + k * 3 + l;
+                        if (value === 'X') input[index] = 1;
+                        else if (value === 'O') input[index] = -1;
                     }
-                    board[i][j] = null;
                 }
             }
         }
-        return null;
     }
+    
+    return input;
+}
 
-    function checkForTie() {
-        // Check if all small boards are either won or full
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                if (bigBoard[i][j] === null && !isBoardFull(smallBoards[i][j])) {
-                    return false; // Game is not tied if any board is neither won nor full
+// Stats Manager
+const StatsManager = {
+    updateStats(result) {
+        const stats = JSON.parse(localStorage.getItem('superTicTacToeStats')) || {
+            easy: { wins: 0, losses: 0, ties: 0 },
+            medium: { wins: 0, losses: 0, ties: 0 },
+            hard: { wins: 0, losses: 0, ties: 0 },
+            impossible: { wins: 0, losses: 0, ties: 0 }
+        };
+
+        stats[gameState.aiDifficulty][result]++;
+        localStorage.setItem('superTicTacToeStats', JSON.stringify(stats));
+    },
+
+    displayStats() {
+        const stats = JSON.parse(localStorage.getItem('superTicTacToeStats')) || {
+            easy: { wins: 0, losses: 0, ties: 0 },
+            medium: { wins: 0, losses: 0, ties: 0 },
+            hard: { wins: 0, losses: 0, ties: 0 },
+            impossible: { wins: 0, losses: 0, ties: 0 }
+        };
+
+        // Update stats display
+        Object.entries(stats).forEach(([difficulty, results]) => {
+            const winsElement = document.getElementById(`${difficulty}-wins`);
+            const lossesElement = document.getElementById(`${difficulty}-losses`);
+            const tiesElement = document.getElementById(`${difficulty}-ties`);
+            
+            if (winsElement) winsElement.textContent = results.wins;
+            if (lossesElement) lossesElement.textContent = results.losses;
+            if (tiesElement) tiesElement.textContent = results.ties;
+        });
+
+        // Update tie score display
+        const tieScoreElement = document.getElementById("tie-score");
+        if (tieScoreElement) {
+            tieScoreElement.textContent = `Ties: ${gameState.tieScore}`;
+        }
+    }
+};
+
+// Audio Manager
+const AudioManager = {
+    audioContext: null,
+    isMuted: false,
+
+    initialize() {
+        try {
+            // Create new audio context
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            console.log('Audio context initialized:', this.audioContext.state);
+
+            // Resume audio context (needed for some browsers)
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume().then(() => {
+                    console.log('Audio context resumed');
+                });
+            }
+
+            // Load mute preference
+            this.isMuted = localStorage.getItem('soundMuted') === 'true';
+            this.updateSoundToggle();
+
+            console.log('AudioManager initialized successfully');
+        } catch (e) {
+            console.error('Failed to initialize AudioManager:', e);
+        }
+    },
+
+    playSound(type) {
+        if (this.isMuted || !this.audioContext) return;
+
+        try {
+            const gainNode = this.audioContext.createGain();
+            gainNode.connect(this.audioContext.destination);
+
+            // Resume context if needed
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
+            }
+
+            const oscillator = this.audioContext.createOscillator();
+            oscillator.connect(gainNode);
+
+            switch (type) {
+                case 'move':
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(440, this.audioContext.currentTime); // A4
+                    gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+                    oscillator.start();
+                    oscillator.stop(this.audioContext.currentTime + 0.1);
+                    break;
+
+                case 'invalidMove':
+                    oscillator.type = 'sawtooth';
+                    oscillator.frequency.setValueAtTime(220, this.audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+                    oscillator.start();
+                    oscillator.stop(this.audioContext.currentTime + 0.1);
+                    break;
+
+                case 'boardWin':
+                    oscillator.type = 'triangle';
+                    oscillator.frequency.setValueAtTime(523.25, this.audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+                    oscillator.start();
+                    oscillator.stop(this.audioContext.currentTime + 0.2);
+                    break;
+            }
+        } catch (e) {
+            console.error('Error playing sound:', e);
+        }
+    },
+
+    toggleSound() {
+        this.isMuted = !this.isMuted;
+        localStorage.setItem('soundMuted', this.isMuted);
+        this.updateSoundToggle();
+        console.log('Sound toggled:', this.isMuted ? 'muted' : 'unmuted');
+    },
+
+    updateSoundToggle() {
+        const soundToggle = document.getElementById('sound-toggle');
+        if (soundToggle) {
+            soundToggle.textContent = this.isMuted ? '🔇 Sound Off' : '🔊 Sound On';
+        }
+    },
+
+    playVictorySound() {
+        // Implementation of victory sound
+    },
+
+    playDefeatSound() {
+        // Implementation of defeat sound
+    },
+
+    playTieSound() {
+        // Implementation of tie sound
+    }
+};
+
+// Handle AI toggle change
+function handleAIToggle() {
+    console.log('AI Toggle changed');
+    gameState.isAIGame = DOMElements.aiToggle.checked;
+    const aiFirst = document.getElementById('ai-first');
+    
+    if (aiFirst) {
+        aiFirst.disabled = !gameState.isAIGame;
+        // If AI toggle is turned on and AI is set to go first, start new game
+        if (gameState.isAIGame && aiFirst.checked) {
+            startNewGame(true);
+        }
+    }
+    
+    updatePlayerNames();
+}
+
+// Handle difficulty change
+function handleDifficultyChange() {
+    const newDifficulty = DOMElements.aiDifficultySelect.value;
+
+    if (gameState.gameInProgress) {
+        if (gameState.moveCount < constants.MINIMUM_MOVES_BEFORE_FREE_RESTART) {
+            const message = `Changing difficulty before ${constants.MINIMUM_MOVES_BEFORE_FREE_RESTART} moves will count as a loss. Continue?`;
+            if (confirm(message)) {
+                if (gameState.isAIGame) {
+                    StatsManager.updateStats('losses');
+                    alert("Game counted as a loss due to early difficulty change.");
                 }
+                gameState.aiDifficulty = newDifficulty;
+                startNewGame();
+            } else {
+                DOMElements.aiDifficultySelect.value = gameState.aiDifficulty;
+            }
+        } else {
+            if (confirm("Changing difficulty will start a new game. Continue?")) {
+                gameState.aiDifficulty = newDifficulty;
+                startNewGame();
+            } else {
+                DOMElements.aiDifficultySelect.value = gameState.aiDifficulty;
             }
         }
-        return true; // All boards are either won or full
+    } else {
+        gameState.aiDifficulty = newDifficulty;
     }
+}
 
-    function isBoardFull(board) {
-        return board.every(row => row.every(cell => cell !== null));
+// Initialize the game
+function initializeGame() {
+    initializeGameBoard();
+    initializeEventListeners();
+    
+    // Set initial AI state
+    gameState.isAIGame = DOMElements.aiToggle.checked;
+    const aiFirst = document.getElementById('ai-first');
+    if (aiFirst) {
+        aiFirst.disabled = !gameState.isAIGame;
     }
+    
+    updateUI();
+    updatePlayerNames();
+}
 
-    function makeMove(boardRow, boardCol, row, col) {
-        smallBoards[boardRow][boardCol][row][col] = currentPlayer;
-        updateCell(boardRow, boardCol, row, col);
+// Update player names based on game mode
+function updatePlayerNames() {
+    gameState.playerXName = "Player X";
+    gameState.playerOName = gameState.isAIGame ? "AI" : "Player O";
+    UIManager.updateScoreboard();
+}
 
-        // Check if the move won the small board
-        if (checkWin(smallBoards[boardRow][boardCol])) {
-            bigBoard[boardRow][boardCol] = currentPlayer;
-            
-            // Check if winning the small board resulted in winning the big board
-            if (checkWin(bigBoard)) {
-                handleBigBoardWin(currentPlayer);
-                return; // End the game
-            }
-        } else if (isBoardFull(smallBoards[boardRow][boardCol])) {
-            bigBoard[boardRow][boardCol] = "T"; // Mark as a tie
-        }
-
-        // Continue the game...
-        switchPlayer();
-        updateNextBoard(row, col);
-    }
-
-    function endGame(result) {
-        gameBoard.classList.remove("game-active");
-        if (result === "T") {
-            alert("The game is a tie!");
-        } else {
-            const winnerName = result === "X" ? playerXName : playerOName;
-            alert(`${winnerName} wins the game!`);
-        }
-        // ... any other end-game logic ...
-        gameInProgress = false;
-        if (result === "T") {
-            tieScore++;
-            document.getElementById("tie-score").textContent = `Ties: ${tieScore}`;
-        }
-    }
-
-    const statsModal = document.getElementById('stats-modal');
-    const showStatsButton = document.getElementById('show-stats-button');
-    const closeStatsButton = document.getElementById('close-stats-button');
-
-    // Show stats modal when the button is clicked
-    showStatsButton.addEventListener('click', function() {
-        displayStats();
-        statsModal.style.display = 'block';
+// Initialize everything when the page loads
+document.addEventListener("DOMContentLoaded", () => {
+    initializeGame();
+    UIManager.initializeSidebar();
+    
+    // Add window resize handler
+    window.addEventListener('resize', () => {
+        UIManager.initializeSidebar();
     });
 
-    // Close stats modal when the close button is clicked
-    closeStatsButton.addEventListener('click', function() {
-        statsModal.style.display = 'none';
-    });
-
-    // Close the modal if clicking outside of it
-    window.addEventListener('click', function(event) {
-        if (event.target == statsModal) {
-            statsModal.style.display = 'none';
-        }
-    });
-
-
-
-    // Call initializeGame when the DOM is fully loaded
-    document.addEventListener("DOMContentLoaded", initializeGame);
-
-    // Add this to your code and check the console
-    console.log("Stored stats:", localStorage.getItem('superTicTacToeStats'));
-
-    console.log('Cells with last-move class:', document.querySelectorAll('.cell.last-move'));
-
-    function updateCell(bigRow, bigCol, row, col) {
-        const cell = document.querySelector(`.small-board[data-big-row="${bigRow}"][data-big-col="${bigCol}"] .cell[data-row="${row}"][data-col="${col}"]`);
-        if (cell) {
-            cell.textContent = currentPlayer;
-            cell.classList.add("taken");
-            
-            // Remove last-move class from all cells
-            document.querySelectorAll('.cell.last-move').forEach(cell => cell.classList.remove('last-move'));
-            
-            // Add last-move class to the current cell
-            cell.classList.add('last-move');
-        } else {
-            console.error(`Cell not found: ${bigRow},${bigCol},${row},${col}`);
-        }
-    }
+    // Set up UI elements only
+    DOMElements.soundToggle.checked = localStorage.getItem('soundEnabled') !== 'false';
+    const aiFirst = document.getElementById('ai-first');
+    aiFirst.disabled = !gameState.isAIGame;
+    AudioManager.initialize();
+    StatsManager.displayStats();
 });
+
+function isBoardFull(board) {
+    return board.every(row => row.every(cell => cell !== null));
+}
+
+function handleGameEnd(winner) {
+    gameState.gameInProgress = false;
+    
+    // Update scores
+    if (winner === 'X') {
+        gameState.playerXScore++;
+        if (gameState.isAIGame) {
+            StatsManager.updateStats('wins');
+        }
+    } else if (winner === 'O') {
+        gameState.playerOScore++;
+        if (gameState.isAIGame) {
+            StatsManager.updateStats('losses');
+        }
+    } else if (winner === 'T') {
+        gameState.tieScore++;
+        if (gameState.isAIGame) {
+            StatsManager.updateStats('ties');
+        }
+    }
+
+    // Update UI
+    UIManager.updateScoreboard();
+    
+    // Play appropriate sound
+    if (winner === 'X') {
+        AudioManager.playVictorySound();
+    } else if (winner === 'O') {
+        AudioManager.playDefeatSound();
+    } else {
+        AudioManager.playTieSound();
+    }
+
+    // Show victory effects
+    if (winner !== 'T') {
+        UIManager.showConfetti();
+        const winnerName = winner === 'X' ? gameState.playerXName : gameState.playerOName;
+        setTimeout(() => alert(`${winnerName} wins!`), 100);
+    } else {
+        setTimeout(() => alert("It's a tie!"), 100);
+    }
+
+    // Open sidebar to show final score
+    DOMElements.sidebar.classList.add("visible");
+    DOMElements.toggleSidebarButton.textContent = "Hide Sidebar";
+}
 
